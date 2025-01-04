@@ -12,13 +12,13 @@ public class Bugzilla30317 : _IssuesUITest
 	const string PageOne = "Set ItemSource On Appearing";
 	const string PageTwo = "Set ItemSource in ctor"; 
 #else
-    const string PageOne = "PageOne";
-	const string PageTwo = "PageTwo"; 
+	const string PageOne = "PageOne";
+	const string PageTwo = "PageTwo";
 #endif
 
-#if ANDROID 
-    const string TabOne = "TABONECTOR";
-    const string TabTwo = "TABTWOONAPPEARING";
+#if ANDROID
+	const string TabOne = "TABONECTOR";
+	const string TabTwo = "TABTWOONAPPEARING";
 #elif WINDOWS
 	const string TabOne = "TabOneCtor";
     const string TabTwo = "TabTwoOnAppearing";
@@ -43,7 +43,7 @@ public class Bugzilla30317 : _IssuesUITest
 	}
 
 	public override string Issue => "https://bugzilla.xamarin.com/show_bug.cgi?id=30137";
- 
+
 	[Test, Order(1)]
 	public void Bugzilla30317ItemSourceOnAppearingContentPage()
 	{
@@ -51,11 +51,11 @@ public class Bugzilla30317 : _IssuesUITest
 
 		App.WaitForElement(PageOneItem1);
 		TouchAndHold(PageOneItem1);
- 
+
 		App.WaitForElement(PageOneItem5);
 		TouchAndHold(PageOneItem5);
 	}
- 
+
 	[Test, Order(2)]
 	public void Bugzilla30317ItemSourceCtorContentPage()
 	{
@@ -65,48 +65,48 @@ public class Bugzilla30317 : _IssuesUITest
 
 		App.WaitForElement(PageTwoItem1);
 		TouchAndHold(PageTwoItem1);
- 
+
 		App.WaitForElement(PageTwoItem5);
 		TouchAndHold(PageTwoItem5);
 	}
- 
+
 	[Test, Order(3)]
 	public void Bugzilla30317ItemSourceTabbedPage()
 	{
- 
+
 		App.WaitForElement(PageTwo);
 		App.WaitForElement(PageThreeButton);
 		App.Tap(PageThreeButton);
- 
+
 		App.WaitForElement(TabTwo);
 		App.Tap(TabTwo);
- 
+
 		App.WaitForElement(TabTwoItem1);
 		TouchAndHold(TabTwoItem1);
 		App.WaitForElement(TabTwoItem1);
- 
+
 		App.WaitForElement(TabTwoItem5);
 		TouchAndHold(TabTwoItem5);
 		App.WaitForElement(TabTwoItem5);
- 
+
 		App.WaitForElement(TabOne);
 		App.Tap(TabOne);
- 
+
 		App.WaitForElement(TabOneItem1);
 		TouchAndHold(TabOneItem1);
 		App.WaitForElement(TabOneItem1);
- 
+
 		App.WaitForElement(TabOneItem5);
 		TouchAndHold(TabOneItem5);
 		App.WaitForElement(TabOneItem5);
 	}
- 
+
 	void TouchAndHold(string item)
 	{
 #if MACCATALYST //In Catalyst TouchAndHold is not supported. So using LongPress
 		App.LongPress(item);
 #else
-    	App.TouchAndHold(item);
+		App.TouchAndHold(item);
 #endif
 	}
 }

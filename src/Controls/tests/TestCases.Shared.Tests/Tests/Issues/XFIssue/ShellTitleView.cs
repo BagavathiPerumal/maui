@@ -23,17 +23,17 @@ public class ShellTitleView : _IssuesUITest
 #if WINDOWS
     const string TitleViewId="commandBar";
 #else
-    const string TitleViewId = "TitleViewId";
+	const string TitleViewId = "TitleViewId";
 #endif
 
 #if WINDOWS
     const string Page="navViewItem";
 #elif ANDROID
-    const string Page = "PAGE 2";
+	const string Page = "PAGE 2";
 #else
     const string Page = "page 2";
 #endif
-    public override string Issue => "Shell Title View Tests";
+	public override string Issue => "Shell Title View Tests";
 
 	[Test]
 	public void TitleWidthMeasuresCorrectly_13949()
