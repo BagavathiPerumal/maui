@@ -200,6 +200,7 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 			// This is required in order to set the "Frame" property on NavigationPage
 			// It'd be good to see if we can optimize this a bit better.
 			(Element as IView).Arrange(View.Bounds.ToRectangle());
+			UpdateFlyoutIcon();
 		}
 
 		public override void ViewDidLoad()
@@ -411,6 +412,15 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 
 			if (flyoutDetail != null && parentPages.Append((Page)Element).Contains(flyoutDetail.Detail))
 				_parentFlyoutPage = flyoutDetail;
+		}
+
+		void UpdateFlyoutIcon()
+		{
+			if (NavPageController is null || NavPageController.Pages is null || NavPageController.Pages.Count() == 0)
+				return;
+
+			var parentingViewController = GetParentingViewController();
+				parentingViewController?.UpdateLeftBarButtonItem();
 		}
 
 		TaskCompletionSource<bool> _pendingNavigationRequest;
