@@ -30,7 +30,7 @@ public class Issue21828 : FlyoutPage
         Detail = _navigationPage;
 
         Title = "FlyoutBug";
-        FlyoutLayoutBehavior = FlyoutLayoutBehavior.Default;
+        FlyoutLayoutBehavior = FlyoutLayoutBehavior.Popover;
     }
 
     async Task BreakFlyoutButton()
