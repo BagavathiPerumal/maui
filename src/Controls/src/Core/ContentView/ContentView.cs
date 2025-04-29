@@ -29,6 +29,20 @@ namespace Microsoft.Maui.Controls
 			{
 				SetInheritedBindingContext(content, BindingContext);
 			}
+
+			PropagateBindingContextToAttachedProperties();
+		}
+
+		void PropagateBindingContextToAttachedProperties()
+		{
+			var contextFlyout = FlyoutBase.GetContextFlyout(this);
+			if (contextFlyout != null)
+			{
+				if (contextFlyout is MenuFlyout menuFlyout)
+				{
+					SetInheritedBindingContext(menuFlyout, BindingContext);
+				}
+			}
 		}
 
 		internal override void OnControlTemplateChanged(ControlTemplate oldValue, ControlTemplate newValue)
