@@ -11,6 +11,7 @@ using Microsoft.Maui.Graphics;
 using ADragFlags = Android.Views.DragFlags;
 using AUri = Android.Net.Uri;
 using AView = Android.Views.View;
+using AGraphics = Android.Graphics;
 
 namespace Microsoft.Maui.Controls.Platform
 {
@@ -181,6 +182,16 @@ namespace Microsoft.Maui.Controls.Platform
 
 			return validTarget;
 		}
+        double GetEffectiveScale(VisualElement element)
+        {
+            double scale = 1.0;
+            while (element != null)
+            {
+                scale *= element.Scale;
+                element = element.Parent as VisualElement;
+            }
+            return scale;
+        }
 
 		bool HandleDragOver(DataPackage package, DragEvent e, PlatformDragEventArgs platformArgs)
 		{
@@ -336,7 +347,8 @@ namespace Microsoft.Maui.Controls.Platform
 				customLocalStateData.SourcePlatformView = v;
 				customLocalStateData.SourceElement = element;
 
-				var dragShadowBuilder = args.PlatformArgs?.DragShadowBuilder ?? new AView.DragShadowBuilder(v);
+                var scale = GetEffectiveScale(element as VisualElement);
+				var dragShadowBuilder = args.PlatformArgs?.DragShadowBuilder ?? new ScaledDragShadowBuilder(v, scale);
 				var localData = args.PlatformArgs?.LocalData ?? customLocalStateData;
 
 #pragma warning disable CS0618, CA1416 // DragFlags.Global added in API 24: https://developer.android.com/reference/android/view/View#DRAG_FLAG_GLOBAL
@@ -382,6 +394,30 @@ namespace Microsoft.Maui.Controls.Platform
 			public DataPackage DataPackage { get; set; }
 			public DataPackageOperation AcceptedOperation { get; set; } = DataPackageOperation.Copy;
 			public VisualElement SourceElement { get; set; }
+		}
+
+		class ScaledDragShadowBuilder : AView.DragShadowBuilder
+		{
+			readonly double _scale;
+            public ScaledDragShadowBuilder(AView view, double scale) : base(view)
+            {
+                _scale = scale;
+            }
+            public override void OnProvideShadowMetrics(AGraphics.Point size, AGraphics.Point touch)
+            {
+                var w = (int)(View.Width * _scale);
+                var h = (int)(View.Height * _scale);
+                size.Set(w, h);
+                touch.Set(w / 2, h / 2);
+            }
+            public override void OnDrawShadow(AGraphics.Canvas canvas)
+            {
+                canvas.Save();
+                canvas.Scale((float)_scale, (float)_scale);
+                base.OnDrawShadow(canvas);
+                canvas.Restore();
+            }
+
 		}
 	}
 }

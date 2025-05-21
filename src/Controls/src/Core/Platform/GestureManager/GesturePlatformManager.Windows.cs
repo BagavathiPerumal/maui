@@ -2,14 +2,18 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls.Internals;
 using Microsoft.Maui.Graphics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
 namespace Microsoft.Maui.Controls.Platform
@@ -252,7 +256,7 @@ namespace Microsoft.Maui.Controls.Platform
 
 		void HandleDragStarting(UIElement sender, Microsoft.UI.Xaml.DragStartingEventArgs e)
 		{
-			SendEventArgs<DragGestureRecognizer>(rec =>
+			SendEventArgs<DragGestureRecognizer>(async rec =>
 			{
 				var view = Element as View;
 
@@ -262,16 +266,28 @@ namespace Microsoft.Maui.Controls.Platform
 					return;
 				}
 
-				var handler = sender as IViewHandler;
+				var handler = _handler;
 				var args = rec.SendDragStarting(view, (relativeTo) => GetPosition(relativeTo, e), new PlatformDragStartingEventArgs(sender, e));
 
 				e.Data.Properties[_doNotUsePropertyString] = args.Data;
 
 #pragma warning disable CS0618 // Type or member is obsolete
-				if ((!args.Handled || (!args.PlatformArgs?.Handled ?? true)) && handler != null)
+			if ((!args.Handled || (!args.PlatformArgs?.Handled ?? true)) && handler != null)
 #pragma warning restore CS0618 // Type or member is obsolete
 				{
-					if (handler?.PlatformView is UI.Xaml.Controls.Image nativeImage &&
+					if (_handler.VirtualView is VisualElement visualElement && handler ?.PlatformView is FrameworkElement fe)
+					{
+						double scale = GetEffectiveScale((VisualElement)_handler.VirtualView);
+						var bitmap = await RenderElementToBitmapAsync(fe, scale);
+						if (bitmap != null)
+						{
+							var stream = new InMemoryRandomAccessStream();
+							var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
+							encoder.SetSoftwareBitmap(bitmap);
+							e.Data.SetBitmap(RandomAccessStreamReference.CreateFromStream(stream));
+						}
+					}
+					else if (handler?.PlatformView is UI.Xaml.Controls.Image nativeImage &&
 						nativeImage.Source is BitmapImage bi && bi.UriSource != null)
 					{
 						e.Data.SetBitmap(RandomAccessStreamReference.CreateFromUri(bi.UriSource));
@@ -301,6 +317,83 @@ namespace Microsoft.Maui.Controls.Platform
 
 				e.Cancel = args.Cancel;
 			});
+		}
+
+		private static double GetEffectiveScale(VisualElement? element)
+		{
+			double scale = 1.0;
+			while (element != null)
+			{
+				scale *= element.Scale;
+				element = element.Parent as VisualElement;
+			}
+			return scale;
+		}
+
+		private void EnsureLayoutUpdated(FrameworkElement element)
+		{
+			FrameworkElement? current = element;
+			while (current != null)
+			{
+				current.UpdateLayout();
+				current = current.Parent as FrameworkElement;
+			}
+		}
+
+		private async Task<SoftwareBitmap?> RenderElementToBitmapAsync(FrameworkElement element, double scale)
+		{
+			if (element == null || scale <= 0)
+				return null;
+
+			EnsureLayoutUpdated(element);
+
+			double width = element.ActualWidth;
+			double height = element.ActualHeight;
+
+			if (width <= 0 || height <= 0)
+			{
+				width = element.DesiredSize.Width;
+				height = element.DesiredSize.Height;
+			}
+
+			if (width <= 0 || height <= 0)
+			{
+				width = element.Width;
+				height = element.Height;
+			}
+
+			if (width <= 0 || height <= 0)
+			{
+				width = height = 1;
+			}
+
+			int pixelWidth = (int)Math.Ceiling(width * scale);
+			int pixelHeight = (int)Math.Ceiling(height * scale);
+
+			if (pixelWidth <= 0 || pixelHeight <= 0)
+				return null;
+			var originalTransform = element.RenderTransform;
+			var originalTransformOrigin = element.RenderTransformOrigin;
+
+			element.RenderTransform = new ScaleTransform { ScaleX = scale, ScaleY = scale };
+			element.UpdateLayout();
+
+			var rtb = new RenderTargetBitmap();
+			await rtb.RenderAsync(element, pixelWidth, pixelHeight);
+
+			element.RenderTransform = originalTransform;
+			element.RenderTransformOrigin = originalTransformOrigin;
+
+			var pixelBuffer = await rtb.GetPixelsAsync();
+			var softwareBitmap = SoftwareBitmap.CreateCopyFromBuffer(
+				pixelBuffer,
+				BitmapPixelFormat.Bgra8,
+				rtb.PixelWidth,
+				rtb.PixelHeight,
+				BitmapAlphaMode.Premultiplied
+			);
+
+			return softwareBitmap;
 		}
 
 		public VisualElement? Element
