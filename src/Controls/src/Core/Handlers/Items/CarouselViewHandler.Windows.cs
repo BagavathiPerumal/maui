@@ -24,6 +24,7 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 		WScrollBarVisibility? _horizontalScrollBarVisibilityWithoutLoop;
 		WScrollBarVisibility? _verticalScrollBarVisibilityWithoutLoop;
 		Size _currentSize;
+		bool _itemsSourceSetAfterLoaded;
 		bool _isCarouselViewReady;
 		NotifyCollectionChangedEventHandler _collectionChanged;
 		readonly WeakNotifyCollectionChangedProxy _proxy = new();
@@ -39,10 +40,19 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 		{
 			ItemsView.Scrolled += CarouselScrolled;
 			platformView.SizeChanged += OnListViewSizeChanged;
+			platformView.Loaded += OnPlatformViewLoaded;
 
 			UpdateScrollBarVisibilityForLoop();
 
 			base.ConnectHandler(platformView);
+		}
+
+		void OnPlatformViewLoaded(object sender, RoutedEventArgs e)
+		{
+			if (_itemsSourceSetAfterLoaded)
+				return;
+			_itemsSourceSetAfterLoaded = true;
+			UpdateItemsSource();
 		}
 
 		protected override void DisconnectHandler(ListViewBase platformView)
@@ -53,6 +63,7 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			if (platformView != null)
 			{
 				platformView.SizeChanged -= OnListViewSizeChanged;
+				platformView.Loaded -= OnPlatformViewLoaded;
 				_proxy.Unsubscribe();
 			}
 
@@ -68,6 +79,9 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 
 		protected override void UpdateItemsSource()
 		{
+			if (!_itemsSourceSetAfterLoaded)
+				return;
+
 			var itemsSource = ItemsView?.ItemsSource;
 
 			if (itemsSource == null)
