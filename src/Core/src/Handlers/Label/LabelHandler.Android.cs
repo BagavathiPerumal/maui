@@ -24,8 +24,8 @@ namespace Microsoft.Maui.Handlers
 		{
 			handler.PlatformView.Alpha = (float)label.Opacity;
 
-			// handler.PlatformView.Invalidate();
-			// handler.PlatformView.RequestLayout();
+			handler.PlatformView.Invalidate();
+			handler.PlatformView.RequestLayout();
 		}
 
 		public static void MapText(ILabelHandler handler, ILabel label)
