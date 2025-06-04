@@ -45,6 +45,9 @@ namespace Microsoft.Maui.Handlers
 		{
 			handler.PlatformView.UpdateOpacity(label);
 			handler.ToPlatform().UpdateOpacity(label);
+
+			handler.PlatformView.InvalidateMeasure();
+			handler.PlatformView.InvalidateArrange();
 		}
 
 		public static void MapText(ILabelHandler handler, ILabel label) =>
