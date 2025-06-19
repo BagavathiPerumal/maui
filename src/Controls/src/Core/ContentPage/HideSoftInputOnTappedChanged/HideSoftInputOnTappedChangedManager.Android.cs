@@ -36,7 +36,38 @@ namespace Microsoft.Maui.Controls
 						);
 
 					if (location.Contains(point))
+					{
 						DispatchTouchEvent?.Invoke(this, e);
+						
+						if (e.Action == MotionEventActions.Down && pvh.PlatformView is not null)
+						{
+							HandleGlobalTapForKeyboardDismissal(pvh.PlatformView, e, androidContext);
+						}
+					}
+				}
+			}
+		}
+
+		void HandleGlobalTapForKeyboardDismissal(AView rootView, MotionEvent e, Android.Content.Context context)
+		{
+			var focusedView = rootView.FindFocus();
+			if (focusedView != null && focusedView.IsSoftInputShowing())
+			{
+				var focusedLocation = focusedView.GetBoundingBox();
+				var tapPoint = new Point(
+					context.FromPixels(e.RawX),
+					context.FromPixels(e.RawY)
+				);
+
+				if (!focusedLocation.Contains(tapPoint))
+				{
+					rootView.Post(() =>
+					{
+						if (focusedView.IsSoftInputShowing())
+						{
+							focusedView.HideSoftInput();
+						}
+					});
 				}
 			}
 		}
