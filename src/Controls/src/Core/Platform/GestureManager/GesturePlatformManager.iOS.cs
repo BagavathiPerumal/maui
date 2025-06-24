@@ -408,9 +408,9 @@ namespace Microsoft.Maui.Controls.Platform
 			return result;
 		}
 
-		void UpdateDirection(UISwipeGestureRecognizer recognizer, SwipeDirection direction)
+		void UpdateSwipeGestureDirection(UISwipeGestureRecognizer recognizer, SwipeDirection direction)
 		{
-			recognizer.Direction = (UISwipeGestureRecognizerDirection)(int)direction;
+			recognizer.Direction = (UISwipeGestureRecognizerDirection)direction;
 		}
 
 		[SupportedOSPlatform("ios13.0")]
@@ -770,8 +770,13 @@ namespace Microsoft.Maui.Controls.Platform
 				_gestureRecognizers.TryGetValue(swipeGesture, out var uiRecognizers))
 			{
 				foreach (var uiRecognizer in uiRecognizers)
+				{
 					if (uiRecognizer is UISwipeGestureRecognizer uiSwipe)
-						UpdateDirection(uiSwipe, swipeGesture.Direction);
+					{
+						UpdateSwipeGestureDirection(uiSwipe, swipeGesture.Direction);
+						break;
+					}
+				}
 			}
 		}
 
