@@ -39,7 +39,6 @@ namespace Microsoft.Maui.Handlers
 			[nameof(ILabel.TextDecorations)] = MapTextDecorations,
 #if ANDROID
 			[nameof(ILabel.Background)] = MapBackground,
-			[nameof(ILabel.Opacity)] = MapOpacity,
 #endif
 		};
 

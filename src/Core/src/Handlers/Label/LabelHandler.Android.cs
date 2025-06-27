@@ -20,14 +20,6 @@ namespace Microsoft.Maui.Handlers
 			handler.PlatformView?.UpdateBackground(label);
 		}
 
-		internal static void MapOpacity(ILabelHandler handler, ILabel label)
-		{
-			handler.PlatformView.Alpha = (float)label.Opacity;
-
-			handler.PlatformView.Invalidate();
-			handler.PlatformView.RequestLayout();
-		}
-
 		public static void MapText(ILabelHandler handler, ILabel label)
 		{
 			handler.PlatformView?.UpdateTextPlainText(label);
