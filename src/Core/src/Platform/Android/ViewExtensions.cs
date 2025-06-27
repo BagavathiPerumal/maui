@@ -314,10 +314,13 @@ namespace Microsoft.Maui.Platform
 			
 			if (platformView is WrapperView wrapperView && wrapperView.Shadow != null)
 			{
-				wrapperView.Post(() =>
+				if (wrapperView.IsLoaded())
 				{
-					wrapperView.Invalidate();
-				});
+					wrapperView.Post(() =>
+					{
+						wrapperView.Invalidate();
+					});
+				}
 			}
 		}
 
