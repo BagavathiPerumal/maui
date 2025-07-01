@@ -55,6 +55,7 @@ namespace Microsoft.Maui.Platform
 
 				UpdateToolbarPlacement();
 				UpdateHeaderPropertyBinding();
+				UpdateHeaderVisibility();
 			}
 		}
 
@@ -250,6 +251,35 @@ namespace Microsoft.Maui.Platform
 			_useCustomAppTitleBar = useCustomAppTitleBar;
 			_appBarTitleHeight = appTitleBarHeight;
 			UpdateNavigationAndPaneButtonHolderGridStyles();
+		}
+
+		internal void UpdateHeaderVisibility()
+		{
+			if (IsHeaderContentEmpty())
+			{
+				CollapseEmptyHeader();
+			}
+			else if (Toolbar is not null && (Header as CommandBar) != Toolbar)
+			{
+				Header = Toolbar;
+			}
+		}
+		
+		bool IsHeaderContentEmpty()
+		{
+			return Toolbar != null &&
+				   PaneDisplayMode == NavigationViewPaneDisplayMode.LeftMinimal &&
+				   string.IsNullOrEmpty(Toolbar.Title) &&
+				   Toolbar.TitleView == null;
+		}
+		
+		void CollapseEmptyHeader()
+		{
+			if (Header is not null)
+			{
+				Header = null;
+				InvalidateMeasure();
+			}
 		}
 
 		void UpdateNavigationAndPaneButtonHolderGridStyles()
