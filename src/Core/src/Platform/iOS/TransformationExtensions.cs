@@ -51,6 +51,49 @@ namespace Microsoft.Maui.Platform
 
 				var transform = CATransform3D.Identity;
 
+				var has3DRotation = Math.Abs(rotationY) > epsilon || Math.Abs(rotationX) > epsilon;
+
+				if (layer != null && has3DRotation)
+				{
+					var superview = platformView.Superview;
+					var hasSiblings = superview?.Subviews?.Length > 1;
+						
+					if (hasSiblings && superview != null)
+					{
+						var subviews = superview.Subviews;
+						var currentIndex = Array.IndexOf(subviews, platformView);
+												
+						if (currentIndex >= 0)
+						{
+							layer.ZPosition = currentIndex * 100.0f + 50;
+							
+							for (int i = 0; i < subviews.Length; i++)
+							{
+								var siblingView = subviews[i];
+								if (siblingView != platformView && siblingView.Layer != null)
+								{
+									var siblingLayer = siblingView.Layer;
+									
+									if (i > currentIndex)
+									{
+										var expectedZPosition = (currentIndex * 100.0f) + 2000.0f + (i * 100.0f);
+										siblingLayer.ZPosition = expectedZPosition;
+									}
+									else
+									{
+										var expectedZPosition = i * 100.0f;
+										siblingLayer.ZPosition = expectedZPosition;
+									}
+								}
+							}
+						}
+					}
+				}
+				else if (layer != null)
+				{
+					RestoreNaturalZOrder(layer, platformView);
+				}
+
 				// Position is relative to anchor point
 				if (Math.Abs(anchorX - .5) > epsilon)
 					transform = transform.Translate((anchorX - .5f) * width, 0, 0);
@@ -100,6 +143,55 @@ namespace Microsoft.Maui.Platform
 			// TODO: Use the thread var when porting the Device class.
 
 			Update();
+		}
+
+		static void RestoreNaturalZOrder(CALayer layer, UIView platformView)
+		{
+			var superview = platformView.Superview;
+			if (superview?.Subviews != null)
+			{
+				var subviews = superview.Subviews;
+				var currentIndex = Array.IndexOf(subviews, platformView);
+				
+				bool anySiblingRotating = HasAnySibling3DRotation(subviews, platformView);
+				
+				if (!anySiblingRotating && currentIndex >= 0)
+				{
+					var naturalZPosition = currentIndex * 100.0f;
+					layer.ZPosition = naturalZPosition;
+				}
+			}
+			else
+			{
+				layer.ZPosition = 0;
+			}
+		}
+
+		static bool HasAnySibling3DRotation(UIView[] subviews, UIView excludeView)
+		{
+			foreach (var siblingView in subviews)
+			{
+				if (siblingView != excludeView && siblingView.Layer != null)
+				{
+					if (HasLayer3DRotation(siblingView.Layer))
+					{
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+
+		static bool HasLayer3DRotation(CALayer layer)
+		{
+			const double epsilon = 0.001;
+			var transform = layer.Transform;
+			
+			return Math.Abs(transform.M34) > epsilon ||
+			       Math.Abs(transform.M13) > epsilon ||
+			       Math.Abs(transform.M23) > epsilon ||
+			       Math.Abs(transform.M31) > epsilon ||
+			       Math.Abs(transform.M32) > epsilon;
 		}
 	}
 }
