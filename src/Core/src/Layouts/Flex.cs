@@ -797,6 +797,23 @@ namespace Microsoft.Maui.Layouts.Flex
 				}
 				child.Frame[layout.frame_size_i] += flex_size;
 
+				if (child.SelfSizing != null)
+				{
+					float[] size = { child.Frame[2], child.Frame[3] };
+
+					child.SelfSizing(child, ref size[0], ref size[1], inMeasureMode);
+
+					for (int j = 0; j < 2; j++)
+					{
+						int size_off = j + 2;
+						if (size_off == layout.frame_size2_i && child_align(child, item) == AlignItems.Stretch && layout.align_dim > 0)
+							continue;
+						float val = size[j];
+						if (!float.IsNaN(val))
+							child.Frame[size_off] = val;
+					}
+				}
+
 				// Set the cross axis position (and stretch the cross axis size if
 				// needed).
 				float align_size = child.Frame[layout.frame_size2_i];
