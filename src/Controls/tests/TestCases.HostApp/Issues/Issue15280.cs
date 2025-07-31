@@ -21,7 +21,6 @@ public partial class Issue15280 : ContentPage
             BackgroundColor = Colors.LightBlue
         };
 
-        // Add all four swipe directions to test the issue
         var upSwipe = new SwipeGestureRecognizer { Direction = SwipeDirection.Up, Threshold = 20 };
         var downSwipe = new SwipeGestureRecognizer { Direction = SwipeDirection.Down, Threshold = 20 };
         var leftSwipe = new SwipeGestureRecognizer { Direction = SwipeDirection.Left, Threshold = 20 };
@@ -57,7 +56,9 @@ public partial class Issue15280 : ContentPage
             }
         };
 
-        Content = new ScrollView { Content = mainLayout };
+        var grid = new Grid();
+        grid.Children.Add(mainLayout);
+        Content = grid;
     }
 
     void SwipeGestureRecognizer_Swiped(object sender, SwipedEventArgs e)

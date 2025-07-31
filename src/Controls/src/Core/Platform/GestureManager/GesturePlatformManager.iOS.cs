@@ -228,7 +228,13 @@ namespace Microsoft.Maui.Controls.Platform
 
 		static SwipeDirection TransformSwipeDirectionForRotation(SwipeDirection direction, double rotation)
 		{
-			var normalizedRotation = ((rotation % 360) + 360) % 360;
+			// Validate rotation for NaN or Infinity
+			if (!rotation.IsRotationValid())
+			{
+				return direction;
+			}
+
+			var normalizedRotation = rotation.NormalizeRotation();
 
 			var rotationRounded = Math.Round(normalizedRotation / 90) * 90;
 			

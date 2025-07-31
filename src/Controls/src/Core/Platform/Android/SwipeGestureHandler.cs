@@ -7,6 +7,9 @@ namespace Microsoft.Maui.Controls.Platform
 {
 	internal class SwipeGestureHandler
 	{
+		// Threshold below which rotation is considered negligible and transformation is skipped
+		const double RotationThreshold = 0.01;
+
 		double _totalX, _totalY;
 
 		Func<double, double> PixelTranslation
@@ -56,23 +59,38 @@ namespace Microsoft.Maui.Controls.Platform
 
 		(float x, float y) TransformSwipeCoordinatesWithRotation(float x, float y, double rotation)
 		{
-			var correctedX = x; 
-			var correctedY = y;  
-
-			if (Math.Abs(rotation) < 0.01)
+			// Validate input coordinates for NaN or Infinity
+			if (!GestureExtensions.AreCoordinatesValid(x, y))
 			{
-				return (correctedX, correctedY);
+				return (0f, 0f);
 			}
 
-			rotation = rotation % 360;
-			if (rotation < 0) rotation += 360;
+			// Validate rotation for NaN or Infinity
+			if (!rotation.IsRotationValid())
+			{
+				return (x, y);
+			}
 
-			var radians = rotation * Math.PI / 180.0;
+			// Skip transformation for negligible rotation values to avoid unnecessary computation
+			if (Math.Abs(rotation) < RotationThreshold)
+			{
+				return (x, y);
+			}
+
+			var normalizedRotation = rotation.NormalizeRotation();
+
+			var radians = normalizedRotation * Math.PI / 180.0;
 			var cos = Math.Cos(radians);
 			var sin = Math.Sin(radians);
 
-			var transformedX = (float)(correctedX * cos - correctedY * sin);
-			var transformedY = (float)(correctedX * sin + correctedY * cos);
+			var transformedX = (float)(x * cos - y * sin);
+			var transformedY = (float)(x * sin + y * cos);
+
+			// Validate transformed coordinates for NaN or Infinity
+			if (!(transformedX, transformedY).AreCoordinatesValid())
+			{
+				return (x, y);
+			}
 
 			return (transformedX, transformedY);
 		}
