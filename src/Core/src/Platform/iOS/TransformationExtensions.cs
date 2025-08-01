@@ -9,6 +9,10 @@ namespace Microsoft.Maui.Platform
 {
 	public static class TransformationExtensions
 	{
+		const float ZPositionSpacing = 100.0f;
+		const float ZPositionBaseOffset = 50.0f;
+		const float ZPositionSiblingOffset = 2000.0f;
+
 		public static void UpdateTransformation(this UIView platformView, IView? view)
 		{
 			CALayer? layer = platformView.Layer;
@@ -65,7 +69,7 @@ namespace Microsoft.Maui.Platform
 												
 						if (currentIndex >= 0)
 						{
-							layer.ZPosition = currentIndex * 100.0f + 50;
+							layer.ZPosition = currentIndex * ZPositionSpacing + ZPositionBaseOffset;
 							
 							for (int i = 0; i < subviews.Length; i++)
 							{
@@ -76,12 +80,12 @@ namespace Microsoft.Maui.Platform
 									
 									if (i > currentIndex)
 									{
-										var expectedZPosition = (currentIndex * 100.0f) + 2000.0f + (i * 100.0f);
+										var expectedZPosition = (currentIndex * ZPositionSpacing) + ZPositionSiblingOffset + (i * ZPositionSpacing);
 										siblingLayer.ZPosition = expectedZPosition;
 									}
 									else
 									{
-										var expectedZPosition = i * 100.0f;
+										var expectedZPosition = i * ZPositionSpacing;
 										siblingLayer.ZPosition = expectedZPosition;
 									}
 								}
@@ -157,7 +161,7 @@ namespace Microsoft.Maui.Platform
 				
 				if (!anySiblingRotating && currentIndex >= 0)
 				{
-					var naturalZPosition = currentIndex * 100.0f;
+					var naturalZPosition = currentIndex * ZPositionSpacing;
 					layer.ZPosition = naturalZPosition;
 				}
 			}
