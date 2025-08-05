@@ -4,9 +4,94 @@ using System.Linq;
 using CoreAnimation;
 using CoreGraphics;
 using Foundation;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Microsoft.Maui.Graphics
 {
+	internal class RadialGradientCALayer : CALayer, IAutoSizableCALayer
+	{
+		private readonly RadialGradientPaint _radialGradientPaint;
+		
+		[UnconditionalSuppressMessage("Memory", "MEM0002", Justification = "Proven safe in CALayerAutosizeObserver_DoesNotLeak test.")]
+		CALayerAutosizeObserver? _boundsObserver;
+
+		public RadialGradientCALayer(RadialGradientPaint radialGradientPaint)
+		{
+			_radialGradientPaint = radialGradientPaint;
+			SetNeedsDisplay();
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			_boundsObserver?.Dispose();
+			_boundsObserver = null;
+			base.Dispose(disposing);
+		}
+
+		public override void RemoveFromSuperLayer()
+		{
+			_boundsObserver?.Dispose();
+			_boundsObserver = null;
+			base.RemoveFromSuperLayer();
+		}
+
+		void IAutoSizableCALayer.AutoSizeToSuperLayer()
+		{
+			_boundsObserver?.Dispose();
+			_boundsObserver = CALayerAutosizeObserver.Attach(this);
+		}
+
+		public override void DrawInContext(CGContext ctx)
+		{
+			if (_radialGradientPaint?.GradientStops == null || _radialGradientPaint.GradientStops.Length == 0)
+				return;
+
+			var bounds = Bounds;
+			if (bounds.Width <= 0 || bounds.Height <= 0)
+				return;
+
+			var center = _radialGradientPaint.Center;
+			var radius = _radialGradientPaint.Radius;
+
+			// Create gradient colors and locations
+			var orderedStops = _radialGradientPaint.GradientStops.OrderBy(x => x.Offset).ToArray();
+			var gradientColors = new nfloat[orderedStops.Length * 4];
+			var locations = new nfloat[orderedStops.Length];
+
+			int colorIndex = 0;
+			for (int i = 0; i < orderedStops.Length; i++)
+			{
+				var color = orderedStops[i].Color;
+				locations[i] = (nfloat)orderedStops[i].Offset;
+
+				gradientColors[colorIndex++] = (nfloat)color.Red;
+				gradientColors[colorIndex++] = (nfloat)color.Green;
+				gradientColors[colorIndex++] = (nfloat)color.Blue;
+				gradientColors[colorIndex++] = (nfloat)color.Alpha;
+			}
+
+			// Create the gradient
+			using var colorSpace = CGColorSpace.CreateDeviceRGB();
+			using var gradient = new CGGradient(colorSpace, gradientColors, locations);
+
+			// Calculate the actual center and radius in view coordinates
+			var centerPoint = new CGPoint(
+				center.X * bounds.Width + bounds.X,
+				center.Y * bounds.Height + bounds.Y
+			);
+
+			var actualRadius = (nfloat)(radius * Math.Max(bounds.Width, bounds.Height));
+
+			// Draw the radial gradient
+			ctx.DrawRadialGradient(
+				gradient,
+				centerPoint, 0.0f,        // Start point with radius 0
+				centerPoint, actualRadius, // End point with calculated radius
+				CGGradientDrawingOptions.DrawsBeforeStartLocation | CGGradientDrawingOptions.DrawsAfterEndLocation
+			);
+		}
+	}
+
 	public static partial class PaintExtensions
 	{
 		public static CALayer? ToCALayer(this Paint paint, CGRect frame = default)
@@ -33,7 +118,7 @@ namespace Microsoft.Maui.Graphics
 		{
 			var solidColorLayer = new StaticCALayer
 			{
-				ContentsGravity = CALayer.GravityResizeAspectFill,
+				ContentsGravity = CALayer.GravityTop,
 				Frame = frame,
 				BackgroundColor = solidPaint.Color.ToCGColor()
 			};
@@ -78,27 +163,11 @@ namespace Microsoft.Maui.Graphics
 
 		public static CALayer? CreateCALayer(this RadialGradientPaint radialGradientPaint, CGRect frame = default)
 		{
-			var center = radialGradientPaint.Center;
-			var radius = radialGradientPaint.Radius;
-
-			var radialGradientLayer = new StaticCAGradientLayer
+			var radialGradientLayer = new RadialGradientCALayer(radialGradientPaint)
 			{
 				ContentsGravity = CALayer.GravityResizeAspectFill,
-				Frame = frame,
-#pragma warning disable CA1416 // TODO: 'CAGradientLayerType.Radial' is only supported on: 'ios' 12.0 and later
-				LayerType = CAGradientLayerType.Radial,
-#pragma warning restore CA1416
-				StartPoint = new CGPoint(center.X, center.Y),
-				EndPoint = GetRadialGradientPaintEndPoint(center, radius),
-				CornerRadius = (float)radius
+				Frame = frame
 			};
-
-			if (radialGradientPaint.GradientStops != null && radialGradientPaint.GradientStops.Length > 0)
-			{
-				var orderedStops = radialGradientPaint.GradientStops.OrderBy(x => x.Offset).ToList();
-				radialGradientLayer.Colors = GetCAGradientLayerColors(orderedStops);
-				radialGradientLayer.Locations = GetCAGradientLayerLocations(orderedStops);
-			}
 
 			return radialGradientLayer;
 		}
@@ -111,27 +180,6 @@ namespace Microsoft.Maui.Graphics
 		public static CALayer? CreateCALayer(this PatternPaint patternPaint, CGRect frame = default)
 		{
 			throw new NotImplementedException();
-		}
-
-		static CGPoint GetRadialGradientPaintEndPoint(Point startPoint, double radius)
-		{
-			double x = startPoint.X == 1 ? (startPoint.X - radius) : (startPoint.X + radius);
-
-			if (x < 0)
-				x = 0;
-
-			if (x > 1)
-				x = 1;
-
-			double y = startPoint.Y == 1 ? (startPoint.Y - radius) : (startPoint.Y + radius);
-
-			if (y < 0)
-				y = 0;
-
-			if (y > 1)
-				y = 1;
-
-			return new CGPoint(x, y);
 		}
 
 		static NSNumber[] GetCAGradientLayerLocations(List<PaintGradientStop> gradientStops)
