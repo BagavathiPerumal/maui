@@ -93,7 +93,7 @@ namespace Microsoft.Maui.Platform
 						}
 					}
 				}
-				else if (layer is not null)
+				else if (layer is not null && !has3DRotation && HasModifiedZPositions(platformView))
 				{
 					RestoreNaturalZOrder(layer, platformView);
 				}
@@ -149,6 +149,11 @@ namespace Microsoft.Maui.Platform
 			Update();
 		}
 
+		/// <summary>
+		/// Restores all subviews to their natural Z-position hierarchy (Z = 0).
+		/// </summary>
+		/// <param name="layer">The current layer being processed.</param>
+		/// <param name="platformView">The platform view whose container will be restored.</param>
 		static void RestoreNaturalZOrder(CALayer layer, UIView platformView)
 		{
 			var superview = platformView.Superview;
@@ -156,19 +161,60 @@ namespace Microsoft.Maui.Platform
 			{
 				var subviews = superview.Subviews;
 				var currentIndex = Array.IndexOf(subviews, platformView);
-				
+
 				bool anySiblingRotating = HasAnySibling3DRotation(subviews, platformView);
-				
+
 				if (!anySiblingRotating && currentIndex >= 0)
 				{
-					var naturalZPosition = currentIndex * ZPositionSpacing;
-					layer.ZPosition = naturalZPosition;
+					// Restore Z-positions for ALL subviews to 0 (natural flat hierarchy)
+					for (int i = 0; i < subviews.Length; i++)
+					{
+						var siblingView = subviews[i];
+						if (siblingView?.Layer != null)
+						{
+							siblingView.Layer.ZPosition = 0;
+						}
+					}
 				}
 			}
 			else
 			{
 				layer.ZPosition = 0;
 			}
+		}
+
+		/// <summary>
+		/// Determines whether any subviews have Z-positions modified by the 3D rotation algorithm.
+		/// </summary>
+		/// <param name="platformView">The platform view to check.</param>
+		/// <returns>True if modified Z-positions are detected; otherwise, false.</returns>
+		static bool HasModifiedZPositions(UIView platformView)
+		{
+			var containerView = platformView.Superview;
+			if (containerView?.Subviews is null || containerView.Subviews.Length <= 1)
+				return false;
+
+			// Iterate through all subviews to detect 3D rotation Z-position patterns
+			for (int index = 0; index < containerView.Subviews.Length; index++)
+			{
+				var subview = containerView.Subviews[index];
+				if (subview?.Layer == null)
+					continue;
+
+				var currentZPosition = subview.Layer.ZPosition;
+
+				// Calculate expected Z-position for rotating views (BaseOffset pattern)
+				var expectedRotatingViewZPosition = index * ZPositionSpacing + ZPositionBaseOffset;
+
+				// Check for 3D rotation Z-position patterns
+				bool isRotatingViewPattern = Math.Abs(currentZPosition - expectedRotatingViewZPosition) < 1.0f;
+				bool isBehindViewPattern = currentZPosition >= ZPositionSiblingOffset;
+
+				if (isRotatingViewPattern || isBehindViewPattern)
+					return true;
+			}
+
+			return false;
 		}
 
 		static bool HasAnySibling3DRotation(UIView[] subviews, UIView excludeView)
