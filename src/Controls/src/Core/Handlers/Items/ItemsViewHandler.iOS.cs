@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using CoreGraphics;
 using Foundation;
 using Microsoft.Maui.Graphics;
 using Microsoft.Maui.Handlers;
@@ -155,17 +156,45 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			var potentialContentSize = Controller.GetSize();
 
 			// If contentSize comes back null, it means none of the content has been realized yet;
-			// we need to return the expansive size the collection view wants by default to get
-			// it to start measuring its content
+			// For CarouselView in StackLayout, we should respect parent constraints rather than expanding to unlimited size
 			if (potentialContentSize == null)
 			{
+				// Special handling for CarouselView to prevent it from taking excessive space in StackLayouts
+				if (VirtualView is CarouselView)
+				{
+					// Only use finite constraints - be strict about respecting parent layout constraints
+					if (!double.IsInfinity(widthConstraint) && !double.IsInfinity(heightConstraint))
+					{
+						// Both constraints are finite - use them directly (this is the StackLayout case)
+						IView view = VirtualView;
+						var constrainedWidth = ViewHandlerExtensions.ResolveConstraints(widthConstraint, view.Width, view.MinimumWidth, view.MaximumWidth);
+						var constrainedHeight = ViewHandlerExtensions.ResolveConstraints(heightConstraint, view.Height, view.MinimumHeight, view.MaximumHeight);
+						return new Size(constrainedWidth, constrainedHeight);
+					}
+					else if (!double.IsInfinity(heightConstraint))
+					{
+						// Only height is finite (vertical StackLayout case) - use a conservative width
+						IView view = VirtualView;
+						var constrainedWidth = ViewHandlerExtensions.ResolveConstraints(300, view.Width, view.MinimumWidth, view.MaximumWidth);
+						var constrainedHeight = ViewHandlerExtensions.ResolveConstraints(heightConstraint, view.Height, view.MinimumHeight, view.MaximumHeight);
+						return new Size(constrainedWidth, constrainedHeight);
+					}
+					else if (!double.IsInfinity(widthConstraint))
+					{
+						// Only width is finite (horizontal StackLayout case) - use a conservative height  
+						IView view = VirtualView;
+						var constrainedWidth = ViewHandlerExtensions.ResolveConstraints(widthConstraint, view.Width, view.MinimumWidth, view.MaximumWidth);
+						var constrainedHeight = ViewHandlerExtensions.ResolveConstraints(200, view.Height, view.MinimumHeight, view.MaximumHeight);
+						return new Size(constrainedWidth, constrainedHeight);
+					}
+				}
+				
 				return size;
 			}
 
 			var contentSize = potentialContentSize.Value;
 
-			// If contentSize does have a value, our target size is the smaller of it and the constraints
-
+			// For other ItemsView types, use the original logic
 			size.Width = contentSize.Width <= widthConstraint ? contentSize.Width : widthConstraint;
 			size.Height = contentSize.Height <= heightConstraint ? contentSize.Height : heightConstraint;
 

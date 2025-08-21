@@ -7868,7 +7868,6 @@ override Microsoft.Maui.Controls.Handlers.Items.CarouselViewController.ViewDidLa
 override Microsoft.Maui.Controls.Handlers.Items.CarouselViewController.ViewDidLoad() -> void
 override Microsoft.Maui.Controls.Handlers.Items.CarouselViewController.ViewWillLayoutSubviews() -> void
 override Microsoft.Maui.Controls.Handlers.Items.CarouselViewDelegator.GetVisibleItemsIndex() -> (bool VisibleItems, int First, int Center, int Last)
-override Microsoft.Maui.Controls.Handlers.Items.CarouselViewHandler.GetDesiredSize(double widthConstraint, double heightConstraint) -> Microsoft.Maui.Graphics.Size
 override Microsoft.Maui.Controls.Handlers.Items.CarouselViewLayout.ConstrainTo(CoreGraphics.CGSize size) -> void
 override Microsoft.Maui.Controls.Handlers.Items.CarouselViewLayout.FinalizeCollectionViewUpdates() -> void
 override Microsoft.Maui.Controls.Handlers.Items.DefaultCell.ConstrainTo(System.Runtime.InteropServices.NFloat constant) -> void

@@ -185,10 +185,36 @@ namespace Microsoft.Maui.Controls.Handlers.Items2
 			var contentSize = Controller.GetSize();
 
 			// If contentSize comes back null, it means none of the content has been realized yet;
-			// we need to return the expansive size the collection view wants by default to get
-			// it to start measuring its content
+			// For CarouselView in StackLayout, we should respect parent constraints rather than expanding to unlimited size
 			if (contentSize.Height == 0 || contentSize.Width == 0)
 			{
+				// Only use finite constraints - be strict about respecting parent layout constraints
+				if (!double.IsInfinity(widthConstraint) && !double.IsInfinity(heightConstraint))
+				{
+					// Both constraints are finite - use them directly (this is the StackLayout case)
+					IView view = VirtualView;
+					var constrainedWidth = ViewHandlerExtensions.ResolveConstraints(widthConstraint, view.Width, view.MinimumWidth, view.MaximumWidth);
+					var constrainedHeight = ViewHandlerExtensions.ResolveConstraints(heightConstraint, view.Height, view.MinimumHeight, view.MaximumHeight);
+					return new Size(constrainedWidth, constrainedHeight);
+				}
+				else if (!double.IsInfinity(heightConstraint))
+				{
+					// Only height is finite (vertical StackLayout case) - use a conservative width
+					IView view = VirtualView;
+					var constrainedWidth = ViewHandlerExtensions.ResolveConstraints(300, view.Width, view.MinimumWidth, view.MaximumWidth);
+					var constrainedHeight = ViewHandlerExtensions.ResolveConstraints(heightConstraint, view.Height, view.MinimumHeight, view.MaximumHeight);
+					return new Size(constrainedWidth, constrainedHeight);
+				}
+				else if (!double.IsInfinity(widthConstraint))
+				{
+					// Only width is finite (horizontal StackLayout case) - use a conservative height  
+					IView view = VirtualView;
+					var constrainedWidth = ViewHandlerExtensions.ResolveConstraints(widthConstraint, view.Width, view.MinimumWidth, view.MaximumWidth);
+					var constrainedHeight = ViewHandlerExtensions.ResolveConstraints(200, view.Height, view.MinimumHeight, view.MaximumHeight);
+					return new Size(constrainedWidth, constrainedHeight);
+				}
+				
+				// Fall back to base implementation only when both constraints are infinite
 				return base.GetDesiredSize(widthConstraint, heightConstraint);
 			}
 
