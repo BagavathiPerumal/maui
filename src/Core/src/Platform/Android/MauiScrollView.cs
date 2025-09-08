@@ -403,8 +403,16 @@ namespace Microsoft.Maui.Platform
 			if (!_parentScrollView.Enabled)
 				return false;
 
-			// If the touch is caught by the horizontal scrollview, forward it to the parent 
-			_parentScrollView.ShouldSkipOnTouch = true;
+			// Reset ShouldSkipOnTouch flag on ACTION_DOWN to ensure parent scroll view can handle new gestures
+			if (ev.Action is MotionEventActions.Down or MotionEventActions.Up)
+			{
+				_parentScrollView.ShouldSkipOnTouch = false;
+			}
+			else
+			{
+				_parentScrollView.ShouldSkipOnTouch = true;
+			}
+			
 			_parentScrollView.OnTouchEvent(ev);
 
 			// The nested ScrollViews will allow us to scroll EITHER vertically OR horizontally in a single gesture.
