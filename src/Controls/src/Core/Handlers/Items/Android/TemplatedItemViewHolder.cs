@@ -82,14 +82,10 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 
 			if (!templateChanging)
 			{
-				// Professional solution: Defer BindingContext updates to prevent layout instability during recycling
 				if (View.Handler?.PlatformView is Android.Views.View androidView)
 				{
-					// Use Android's UI thread message queue to defer BindingContext changes
-					// This prevents immediate layout calculations during RecyclerView recycling operations
 					androidView.Post(() =>
 					{
-						// Verify the view is still valid and bound to this ViewHolder
 						if (View != null && View.Handler?.PlatformView == androidView && _itemContentView != null)
 						{
 							View.BindingContext = itemBindingContext;
@@ -98,8 +94,6 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 				}
 				else
 				{
-					// Fallback for cases where platform view is not available
-					// Also use post validation for consistency
 					if (View != null && _itemContentView != null)
 					{
 						View.BindingContext = itemBindingContext;
