@@ -28,6 +28,9 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 		UIGestureRecognizer _tapGesture;
 
 		bool _applyShadow;
+		
+		CGRect _previousViewBounds;
+		UIEdgeInsets _previousSafeAreaInsets;
 
 		bool _intialLayoutFinished;
 		bool? _flyoutOverlapsDetailsInPopoverMode;
@@ -136,6 +139,18 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 		{
 			base.ViewDidLayoutSubviews();
 
+			var currentBounds = View.Bounds;
+			var currentSafeArea = View.SafeAreaInsets;
+			
+			if (AreBoundsEqual(_previousViewBounds, currentBounds) &&
+				AreSafeAreaInsetsEqual(_previousSafeAreaInsets, currentSafeArea))
+			{
+				return;
+			}
+
+			_previousViewBounds = currentBounds;
+			_previousSafeAreaInsets = currentSafeArea;
+
 			if (Element is IView view &&
 				!Primitives.Dimension.IsExplicitSet(view.Width) &&
 				!Primitives.Dimension.IsExplicitSet(view.Height))
@@ -144,6 +159,22 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 			}
 
 			LayoutChildren(false);
+		}
+
+		static bool AreBoundsEqual(CGRect a, CGRect b, double tolerance = 0.000000001)
+		{
+			return Math.Abs(a.X - b.X) < tolerance &&
+				   Math.Abs(a.Y - b.Y) < tolerance &&
+				   Math.Abs(a.Width - b.Width) < tolerance &&
+				   Math.Abs(a.Height - b.Height) < tolerance;
+		}
+
+		static bool AreSafeAreaInsetsEqual(UIEdgeInsets a, UIEdgeInsets b, double tolerance = 0.000000001)
+		{
+			return Math.Abs(a.Left - b.Left) < tolerance &&
+				   Math.Abs(a.Top - b.Top) < tolerance &&
+				   Math.Abs(a.Right - b.Right) < tolerance &&
+				   Math.Abs(a.Bottom - b.Bottom) < tolerance;
 		}
 
 
