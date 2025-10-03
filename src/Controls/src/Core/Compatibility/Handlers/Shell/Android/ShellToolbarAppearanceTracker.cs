@@ -29,7 +29,19 @@ namespace Microsoft.Maui.Controls.Platform.Compatibility
 
 		public virtual void ResetAppearance(AToolbar toolbar, IShellToolbarTracker toolbarTracker)
 		{
-			SetColors(toolbar, toolbarTracker, ShellRenderer.DefaultForegroundColor, ShellRenderer.DefaultBackgroundColor, ShellRenderer.DefaultTitleColor);
+			var shell = _shellContext?.Shell;
+			var backgroundColor = ShellRenderer.DefaultBackgroundColor;
+			
+			if (shell is not null)
+			{
+				var shellBackgroundColor = Shell.GetBackgroundColor(shell);
+				if (shellBackgroundColor is not null)
+				{
+					backgroundColor = shellBackgroundColor;
+				}
+			}
+			
+			SetColors(toolbar, toolbarTracker, ShellRenderer.DefaultForegroundColor, backgroundColor, ShellRenderer.DefaultTitleColor);
 		}
 
 		protected virtual void SetColors(AToolbar toolbar, IShellToolbarTracker toolbarTracker, Color foreground, Color background, Color title)
