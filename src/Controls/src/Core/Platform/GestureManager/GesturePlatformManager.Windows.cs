@@ -735,7 +735,21 @@ namespace Microsoft.Maui.Controls.Platform
 					return false;
 
 				if (e is DoubleTappedRoutedEventArgs)
+				{
+					// Check if both single and double tap recognizers exist
+					var allTapRecognizers = view.GestureRecognizers.GetGesturesFor<TapGestureRecognizer>().ToList();
+					bool hasSingleTap = allTapRecognizers.Any(r => r.NumberOfTapsRequired == 1);
+					bool hasDoubleTap = allTapRecognizers.Any(r => r.NumberOfTapsRequired == 2);
+					
+					// If both single and double tap recognizers exist, only trigger double tap
+					if (hasSingleTap && hasDoubleTap)
+					{
+						return g.NumberOfTapsRequired == 2;
+					}
+					
+					// If only single tap recognizers exist, allow them to be triggered by double tap (preserve existing behavior)
 					return g.NumberOfTapsRequired == 1 || g.NumberOfTapsRequired == 2;
+				}
 
 				return g.NumberOfTapsRequired == 1;
 			}
