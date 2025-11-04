@@ -191,9 +191,18 @@ namespace Microsoft.Maui.Controls.Platform
 			}
 			else
 			{
-				animationCompletionSource.TrySetResult(true);
-			}
+				// Non-animated modals need to wait for presentation completion to prevent race conditions
+				TaskCompletionSource<bool> presentationCompletionSource = new();
+				dialogFragment.PresentationCompleted += OnPresentationCompleted;
 
+				void OnPresentationCompleted(object? sender, EventArgs e)
+				{
+					dialogFragment!.PresentationCompleted -= OnPresentationCompleted;
+					presentationCompletionSource.TrySetResult(true);
+				}
+
+				await presentationCompletionSource.Task;
+			}
 			void OnAnimationEnded(object? sender, EventArgs e)
 			{
 				dialogFragment!.AnimationEnded -= OnAnimationEnded;
@@ -211,7 +220,7 @@ namespace Microsoft.Maui.Controls.Platform
 			bool _pendingAnimation = true;
 
 			public event EventHandler? AnimationEnded;
-
+			public event EventHandler? PresentationCompleted;
 
 			public bool IsAnimated { get; internal set; }
 
@@ -364,6 +373,9 @@ namespace Microsoft.Maui.Controls.Platform
 				int width = ViewGroup.LayoutParams.MatchParent;
 				int height = ViewGroup.LayoutParams.MatchParent;
 				dialog.Window.SetLayout(width, height);
+
+				// Signal that the modal is fully presented and ready
+				PresentationCompleted?.Invoke(this, EventArgs.Empty);
 			}
 
 			public override void OnDismiss(IDialogInterface dialog)
