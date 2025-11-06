@@ -77,9 +77,7 @@ namespace Microsoft.Maui.Controls
 
 		void IPaddingElement.OnPaddingPropertyChanged(Thickness oldValue, Thickness newValue) => InvalidateMeasure();
 
-		IReadOnlyList<Element> ILayoutController.Children => LogicalChildrenInternal;
-
-		IReadOnlyList<Element> IControlTemplated.InternalChildren => LogicalChildrenInternal;
+		IList<Element> IControlTemplated.InternalChildren => InternalChildren;
 
 		bool IControlTemplated.RemoveAt(int index)
 		{
@@ -109,9 +107,17 @@ namespace Microsoft.Maui.Controls
 
 		internal override void SetChildInheritedBindingContext(Element child, object context)
 		{
+			// DEBUG: Issue #32332 - Log binding context propagation
+			System.Diagnostics.Debug.WriteLine($"[TemplatedView.SetChildInheritedBindingContext] Child={child?.GetType().Name}, Context={(context != null ? context.GetType().Name : "NULL")}, ControlTemplate={(ControlTemplate != null ? "SET" : "NULL")}");
+			
 			if (ControlTemplate is null)
 			{
+				System.Diagnostics.Debug.WriteLine($"[TemplatedView.SetChildInheritedBindingContext] No ControlTemplate - calling base.SetChildInheritedBindingContext");
 				base.SetChildInheritedBindingContext(child, context);
+			}
+			else
+			{
+				System.Diagnostics.Debug.WriteLine($"[TemplatedView.SetChildInheritedBindingContext] ControlTemplate exists - NOT propagating binding context to child");
 			}
 		}
 

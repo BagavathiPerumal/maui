@@ -61,11 +61,11 @@ namespace Microsoft.Maui.Controls
 			{
 				while (self.InternalChildren.Count > 0)
 				{
-					self.RemoveAt(self.InternalChildren.Count - 1);
+					self.InternalChildren.RemoveAt(self.InternalChildren.Count - 1);
 				}
 
 				if (newValue != null)
-					self.AddLogicalChild(newElement);
+					self.InternalChildren.Add(newElement);
 			}
 			else
 			{
@@ -107,7 +107,7 @@ namespace Microsoft.Maui.Controls
 			// Now remove all remnants of any other children just to be sure
 			while (self.InternalChildren.Count > 0)
 			{
-				self.RemoveAt(self.InternalChildren.Count - 1);
+				self.InternalChildren.RemoveAt(self.InternalChildren.Count - 1);
 			}
 
 			ControlTemplate template = self.ControlTemplate;
@@ -123,7 +123,7 @@ namespace Microsoft.Maui.Controls
 					throw new NotSupportedException("ControlTemplate must return a type derived from View.");
 				}
 
-				self.AddLogicalChild(content);
+				self.InternalChildren.Add(content);
 				var controlTemplated = (IControlTemplated)bindable;
 				controlTemplated.OnControlTemplateChanged((ControlTemplate)oldValue, (ControlTemplate)newValue);
 				controlTemplated.TemplateRoot = content;

@@ -7,7 +7,7 @@ namespace Microsoft.Maui.Controls
 	{
 		ControlTemplate ControlTemplate { get; set; }
 
-		IReadOnlyList<Element> InternalChildren { get; }
+		IList<Element> InternalChildren { get; }
 
 		void AddLogicalChild(Element element);
 		bool RemoveLogicalChild(Element element);
