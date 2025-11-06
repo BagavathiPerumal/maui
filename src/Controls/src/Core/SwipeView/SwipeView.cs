@@ -9,7 +9,7 @@ namespace Microsoft.Maui.Controls
 {
 	/// <include file="../../docs/Microsoft.Maui.Controls/SwipeView.xml" path="Type[@FullName='Microsoft.Maui.Controls.SwipeView']/Docs/*" />
 	[ContentProperty(nameof(Content))]
-	public partial class SwipeView : ContentView, IElementConfiguration<SwipeView>, ISwipeViewController, ISwipeView, IVisualTreeElement
+	public partial class SwipeView : ContentView, IElementConfiguration<SwipeView>, ISwipeViewController, ISwipeView, IVisualTreeElement, IControlTemplated
 	{
 		readonly Lazy<PlatformConfigurationRegistry<SwipeView>> _platformConfigurationRegistry;
 
@@ -119,6 +119,29 @@ namespace Microsoft.Maui.Controls
 			}
 
 			return elements;
+		}
+
+		// Override IControlTemplated.InternalChildren to prevent TemplateUtilities from removing 
+		// SwipeItems when Content is set. TemplatedView returns LogicalChildrenInternal which  
+		// includes SwipeItems, but only Content should be managed by TemplateUtilities.
+		IReadOnlyList<Element> IControlTemplated.InternalChildren
+		{
+			get
+			{
+				// Return only Content (non-SwipeItems children)
+				var contentChildren = new List<Element>();
+				foreach (var child in LogicalChildrenInternal)
+				{
+					if (child != LeftItems && 
+						child != RightItems && 
+						child != TopItems && 
+						child != BottomItems)
+					{
+						contentChildren.Add(child);
+					}
+				}
+				return contentChildren;
+			}
 		}
 
 		protected override void OnBindingContextChanged()

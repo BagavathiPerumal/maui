@@ -413,5 +413,42 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 			Assert.NotNull(swipeItemView.Content);
 			Assert.NotEmpty(swipeView.LeftItems);
 		}
+
+		[Fact]
+		public void SwipeItemsRemainInLogicalTreeWhenContentIsSet()
+		{
+			var swipeView = new SwipeView();
+			var bindingContext = new object();
+			
+			swipeView.RightItems = new SwipeItems { new SwipeItem { Text = "Action" } };
+			swipeView.LeftItems = new SwipeItems { new SwipeItem { Text = "Delete" } };
+			swipeView.TopItems = new SwipeItems { new SwipeItem { Text = "Top" } };
+			swipeView.BottomItems = new SwipeItems { new SwipeItem { Text = "Bottom" } };
+			
+			swipeView.BindingContext = bindingContext;
+			swipeView.Content = new Grid();
+
+			// Verify SwipeItems remain in logical tree
+			Assert.Contains(swipeView.RightItems, swipeView.LogicalChildrenInternal);
+			Assert.Contains(swipeView.LeftItems, swipeView.LogicalChildrenInternal);
+			Assert.Contains(swipeView.TopItems, swipeView.LogicalChildrenInternal);
+			Assert.Contains(swipeView.BottomItems, swipeView.LogicalChildrenInternal);
+			
+			// Verify parent relationships
+			Assert.Equal(swipeView, swipeView.RightItems.Parent);
+			Assert.Equal(swipeView, swipeView.LeftItems.Parent);
+			Assert.Equal(swipeView, swipeView.TopItems.Parent);
+			Assert.Equal(swipeView, swipeView.BottomItems.Parent);
+			
+			// Verify BindingContext propagation
+			Assert.Equal(bindingContext, swipeView.RightItems.BindingContext);
+			Assert.Equal(bindingContext, swipeView.LeftItems.BindingContext);
+			Assert.Equal(bindingContext, swipeView.TopItems.BindingContext);
+			Assert.Equal(bindingContext, swipeView.BottomItems.BindingContext);
+			Assert.Equal(bindingContext, ((BindableObject)swipeView.RightItems[0]).BindingContext);
+			Assert.Equal(bindingContext, ((BindableObject)swipeView.LeftItems[0]).BindingContext);
+			Assert.Equal(bindingContext, ((BindableObject)swipeView.TopItems[0]).BindingContext);
+			Assert.Equal(bindingContext, ((BindableObject)swipeView.BottomItems[0]).BindingContext);
+		}
 	}
 }
