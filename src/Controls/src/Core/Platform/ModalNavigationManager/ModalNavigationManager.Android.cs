@@ -168,8 +168,6 @@ namespace Microsoft.Maui.Controls.Platform
 
 		async Task PresentModal(Page modal, bool animated)
 		{
-			TaskCompletionSource<bool> animationCompletionSource = new();
-
 			var parentView = GetModalParentView();
 
 			var dialogFragment = new ModalFragment(WindowMauiContext, modal)
@@ -185,7 +183,15 @@ namespace Microsoft.Maui.Controls.Platform
 
 			if (animated)
 			{
-				dialogFragment!.AnimationEnded += OnAnimationEnded;
+				TaskCompletionSource<bool> animationCompletionSource = new();
+				
+				dialogFragment.AnimationEnded += OnAnimationEnded;
+
+				void OnAnimationEnded(object? sender, EventArgs e)
+				{
+					dialogFragment.AnimationEnded -= OnAnimationEnded;
+					animationCompletionSource.SetResult(true);
+				}
 
 				await animationCompletionSource.Task;
 			}
@@ -193,20 +199,16 @@ namespace Microsoft.Maui.Controls.Platform
 			{
 				// Non-animated modals need to wait for presentation completion to prevent race conditions
 				TaskCompletionSource<bool> presentationCompletionSource = new();
+				
 				dialogFragment.PresentationCompleted += OnPresentationCompleted;
 
 				void OnPresentationCompleted(object? sender, EventArgs e)
 				{
-					dialogFragment!.PresentationCompleted -= OnPresentationCompleted;
-					presentationCompletionSource.TrySetResult(true);
+					dialogFragment.PresentationCompleted -= OnPresentationCompleted;
+					presentationCompletionSource.SetResult(true);
 				}
 
 				await presentationCompletionSource.Task;
-			}
-			void OnAnimationEnded(object? sender, EventArgs e)
-			{
-				dialogFragment!.AnimationEnded -= OnAnimationEnded;
-				animationCompletionSource.SetResult(true);
 			}
 		}
 
@@ -219,8 +221,8 @@ namespace Microsoft.Maui.Controls.Platform
 			static readonly ColorDrawable TransparentColorDrawable = new(AColor.Transparent);
 			bool _pendingAnimation = true;
 
-			public event EventHandler? AnimationEnded;
-			public event EventHandler? PresentationCompleted;
+			internal event EventHandler? AnimationEnded;
+			internal event EventHandler? PresentationCompleted;
 
 			public bool IsAnimated { get; internal set; }
 
