@@ -418,14 +418,39 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 		public void SwipeItemsRemainInLogicalTreeWhenContentIsSet()
 		{
 			var swipeView = new SwipeView();
-			var bindingContext = new object();
-			
-			swipeView.RightItems = new SwipeItems { new SwipeItem { Text = "Action" } };
-			swipeView.LeftItems = new SwipeItems { new SwipeItem { Text = "Delete" } };
-			swipeView.TopItems = new SwipeItems { new SwipeItem { Text = "Top" } };
-			swipeView.BottomItems = new SwipeItems { new SwipeItem { Text = "Bottom" } };
-			
-			swipeView.BindingContext = bindingContext;
+			var testCommand = new Command(() => { });
+			var viewModel = new TestViewModel { TestCommand = testCommand };
+
+			var rightSwipeItem = new SwipeItem { Text = "Action" };
+			rightSwipeItem.SetBinding(SwipeItem.CommandProperty,
+				new Binding("TestCommand",
+					source: new RelativeBindingSource(RelativeBindingSourceMode.FindAncestorBindingContext,
+						ancestorType: typeof(TestViewModel))));
+
+			var leftSwipeItem = new SwipeItem { Text = "Delete" };
+			leftSwipeItem.SetBinding(SwipeItem.CommandProperty,
+				new Binding("TestCommand",
+					source: new RelativeBindingSource(RelativeBindingSourceMode.FindAncestorBindingContext,
+						ancestorType: typeof(TestViewModel))));
+
+			var topSwipeItem = new SwipeItem { Text = "Top" };
+			topSwipeItem.SetBinding(SwipeItem.CommandProperty,
+				new Binding("TestCommand",
+					source: new RelativeBindingSource(RelativeBindingSourceMode.FindAncestorBindingContext,
+						ancestorType: typeof(TestViewModel))));
+
+			var bottomSwipeItem = new SwipeItem { Text = "Bottom" };
+			bottomSwipeItem.SetBinding(SwipeItem.CommandProperty,
+				new Binding("TestCommand",
+					source: new RelativeBindingSource(RelativeBindingSourceMode.FindAncestorBindingContext,
+						ancestorType: typeof(TestViewModel))));
+
+			swipeView.RightItems = new SwipeItems { rightSwipeItem };
+			swipeView.LeftItems = new SwipeItems { leftSwipeItem };
+			swipeView.TopItems = new SwipeItems { topSwipeItem };
+			swipeView.BottomItems = new SwipeItems { bottomSwipeItem };
+
+			swipeView.BindingContext = viewModel;
 			swipeView.Content = new Grid();
 
 			// Verify SwipeItems remain in logical tree
@@ -433,22 +458,33 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 			Assert.Contains(swipeView.LeftItems, swipeView.LogicalChildrenInternal);
 			Assert.Contains(swipeView.TopItems, swipeView.LogicalChildrenInternal);
 			Assert.Contains(swipeView.BottomItems, swipeView.LogicalChildrenInternal);
-			
+
 			// Verify parent relationships
 			Assert.Equal(swipeView, swipeView.RightItems.Parent);
 			Assert.Equal(swipeView, swipeView.LeftItems.Parent);
 			Assert.Equal(swipeView, swipeView.TopItems.Parent);
 			Assert.Equal(swipeView, swipeView.BottomItems.Parent);
-			
+
 			// Verify BindingContext propagation
-			Assert.Equal(bindingContext, swipeView.RightItems.BindingContext);
-			Assert.Equal(bindingContext, swipeView.LeftItems.BindingContext);
-			Assert.Equal(bindingContext, swipeView.TopItems.BindingContext);
-			Assert.Equal(bindingContext, swipeView.BottomItems.BindingContext);
-			Assert.Equal(bindingContext, ((BindableObject)swipeView.RightItems[0]).BindingContext);
-			Assert.Equal(bindingContext, ((BindableObject)swipeView.LeftItems[0]).BindingContext);
-			Assert.Equal(bindingContext, ((BindableObject)swipeView.TopItems[0]).BindingContext);
-			Assert.Equal(bindingContext, ((BindableObject)swipeView.BottomItems[0]).BindingContext);
+			Assert.Equal(viewModel, swipeView.RightItems.BindingContext);
+			Assert.Equal(viewModel, swipeView.LeftItems.BindingContext);
+			Assert.Equal(viewModel, swipeView.TopItems.BindingContext);
+			Assert.Equal(viewModel, swipeView.BottomItems.BindingContext);
+			Assert.Equal(viewModel, ((BindableObject)swipeView.RightItems[0]).BindingContext);
+			Assert.Equal(viewModel, ((BindableObject)swipeView.LeftItems[0]).BindingContext);
+			Assert.Equal(viewModel, ((BindableObject)swipeView.TopItems[0]).BindingContext);
+			Assert.Equal(viewModel, ((BindableObject)swipeView.BottomItems[0]).BindingContext);
+
+			// Verify RelativeSource bindings resolved correctly
+			Assert.Equal(testCommand, rightSwipeItem.Command);
+			Assert.Equal(testCommand, leftSwipeItem.Command);
+			Assert.Equal(testCommand, topSwipeItem.Command);
+			Assert.Equal(testCommand, bottomSwipeItem.Command);
+		}
+
+		class TestViewModel
+		{
+			public Command TestCommand { get; set; }
 		}
 	}
 }
