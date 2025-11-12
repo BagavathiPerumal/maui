@@ -14,11 +14,6 @@ namespace Microsoft.Maui.Controls
 		readonly Lazy<PlatformConfigurationRegistry<SwipeView>> _platformConfigurationRegistry;
 		readonly List<ISwipeItem> _swipeItems = new List<ISwipeItem>();
 
-		// Cache for IControlTemplated.InternalChildren to avoid allocating a new list on every access.
-		// The cache is invalidated (via _internalChildrenCacheInvalidated flag) when children are added or removed.
-		readonly List<Element> _cachedInternalChildren = new List<Element>();
-		bool _internalChildrenCacheInvalidated = true;
-
 		/// <include file="../../docs/Microsoft.Maui.Controls/SwipeView.xml" path="//Member[@MemberName='.ctor']/Docs/*" />
 		public SwipeView()
 		{
@@ -27,16 +22,8 @@ namespace Microsoft.Maui.Controls
 			// This just disables any of the legacy layout code from running
 			DisableLayout = true;
 
-			// SwipeItems participate in the visual hierarchy but should not be managed by the template system.
-			// Mark them as Owned = false so they are excluded from IControlTemplated.InternalChildren,
-			// preventing them from being removed when Content is set via TemplateUtilities.OnContentChanged.
-			RightItems.Owned = false;
-			LeftItems.Owned = false;
-			TopItems.Owned = false;
-			BottomItems.Owned = false;
-
-			// Add SwipeItems to LogicalChildrenInternal to maintain parent-child relationships
-			// for BindingContext propagation and visual tree traversal.
+			// SwipeItems is an Element so it participates in the Visual Hierarchy.
+			// This is why we add each set of items to the logical children of swipeview
 			AddLogicalChild(RightItems);
 			AddLogicalChild(LeftItems);
 			AddLogicalChild(TopItems);
@@ -134,48 +121,11 @@ namespace Microsoft.Maui.Controls
 		}
 
 		/// <summary>
-		/// Explicit implementation of IControlTemplated.AddLogicalChild.
-		/// Marks externally added elements (Content) as Owned = true to distinguish them from
-		/// internal framework elements (SwipeItems which are marked as Owned = false).
-		/// </summary>
-		void IControlTemplated.AddLogicalChild(Element element)
-		{
-			if (element is { })
-			{
-				element.Owned = true;
-			}
-
-			AddLogicalChild(element);
-			_internalChildrenCacheInvalidated = true;
-		}
-
-		/// <summary>
 		/// Explicit implementation of IControlTemplated.InternalChildren.
-		/// Returns only externally added children (where Owned = true), filtering out SwipeItems.
-		/// Uses a cached list with dirty flag pattern to avoid allocating a new list on every access.
+		/// Returns Element.EmptyChildren instead of filtering LogicalChildrenInternal to simplify logic
+		/// while preserving SwipeItems' parent relationships and RelativeSource bindings (fixes issue #32332).
 		/// </summary>
-		IReadOnlyList<Element> IControlTemplated.InternalChildren
-		{
-			get
-			{
-				if (_internalChildrenCacheInvalidated)
-				{
-					_cachedInternalChildren.Clear();
-
-					foreach (var child in LogicalChildrenInternal)
-					{
-						if (child.Owned)
-						{
-							_cachedInternalChildren.Add(child);
-						}
-					}
-
-					_internalChildrenCacheInvalidated = false;
-				}
-
-				return _cachedInternalChildren;
-			}
-		}
+		IReadOnlyList<Element> IControlTemplated.InternalChildren => EmptyChildren;
 
 		protected override void OnBindingContextChanged()
 		{
@@ -323,14 +273,12 @@ namespace Microsoft.Maui.Controls
 		{
 			base.OnChildAdded(child);
 			child.PropertyChanged += OnPropertyChanged;
-			_internalChildrenCacheInvalidated = true;
 		}
 
 		protected override void OnChildRemoved(Element child, int oldLogicalIndex)
 		{
 			base.OnChildRemoved(child, oldLogicalIndex);
 			child.PropertyChanged -= OnPropertyChanged;
-			_internalChildrenCacheInvalidated = true;
 		}
 
 		void OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
