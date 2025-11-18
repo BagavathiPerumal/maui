@@ -21,6 +21,7 @@ namespace Microsoft.Maui.Platform
 		private Button? _navigationViewBackButton;
 		private Button? _togglePaneButton;
 		private Graphics.Color? _iconColor;
+		private IView? _mauiTitleView;
 
 		public MauiToolbar()
 		{
@@ -71,12 +72,34 @@ namespace Microsoft.Maui.Platform
 			get => titleView.Content;
 			set
 			{
+				ClearTitleView();
+
 				titleView.Content = value;
 
 				if (value != null)
 					titleView.Visibility = UI.Xaml.Visibility.Visible;
 				else
 					titleView.Visibility = UI.Xaml.Visibility.Collapsed;
+			}
+		}
+
+		internal void UpdateTitleView(IView? newTitleView)
+		{
+			_mauiTitleView = newTitleView;
+		}
+
+		void ClearTitleView()
+		{
+			// Disconnect the OLD view's handler before setting new content
+			if (_mauiTitleView?.Handler != null)
+			{
+				_mauiTitleView.Handler.DisconnectHandler();
+			}
+
+			// Clear the parent-child relationship of old content
+			if (titleView.Content != null)
+			{
+				titleView.Content = null;
 			}
 		}
 

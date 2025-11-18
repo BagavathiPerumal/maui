@@ -50,11 +50,15 @@ namespace Microsoft.Maui.Controls.Platform
 		{
 			_ = toolbar.Handler?.MauiContext ?? throw new ArgumentNullException(nameof(toolbar.Handler.MauiContext));
 
-			platformToolbar.TitleView = toolbar.TitleView?.ToPlatform(toolbar.Handler.MauiContext);
+			var titleView = toolbar.TitleView as IView;
+			platformToolbar.UpdateTitleView(titleView);
 
-			if (toolbar.TitleView is IView view)
+			var platformView = toolbar.TitleView?.ToPlatform(toolbar.Handler.MauiContext);
+			platformToolbar.TitleView = platformView;
+
+			if (titleView is not null)
 			{
-				platformToolbar.TitleViewMargin = view.Margin.ToPlatform();
+				platformToolbar.TitleViewMargin = titleView.Margin.ToPlatform();
 			}
 			else
 			{
