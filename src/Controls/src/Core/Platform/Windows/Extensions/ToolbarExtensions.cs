@@ -50,15 +50,14 @@ namespace Microsoft.Maui.Controls.Platform
 		{
 			_ = toolbar.Handler?.MauiContext ?? throw new ArgumentNullException(nameof(toolbar.Handler.MauiContext));
 
-			var titleView = toolbar.TitleView as IView;
-			platformToolbar.UpdateTitleView(titleView);
+			// Disconnect the handler to remove the platform view from its previous WinUI parent container.
+			toolbar.TitleView?.Handler?.DisconnectHandler();
 
-			var platformView = toolbar.TitleView?.ToPlatform(toolbar.Handler.MauiContext);
-			platformToolbar.TitleView = platformView;
+			platformToolbar.TitleView = toolbar.TitleView?.ToPlatform(toolbar.Handler.MauiContext);
 
-			if (titleView is not null)
+			if (toolbar.TitleView is IView view)
 			{
-				platformToolbar.TitleViewMargin = titleView.Margin.ToPlatform();
+				platformToolbar.TitleViewMargin = view.Margin.ToPlatform();
 			}
 			else
 			{
