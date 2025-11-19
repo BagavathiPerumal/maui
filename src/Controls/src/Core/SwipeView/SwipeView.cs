@@ -12,6 +12,7 @@ namespace Microsoft.Maui.Controls
 	public partial class SwipeView : ContentView, IElementConfiguration<SwipeView>, ISwipeViewController, ISwipeView, IVisualTreeElement
 	{
 		readonly Lazy<PlatformConfigurationRegistry<SwipeView>> _platformConfigurationRegistry;
+
 		readonly List<ISwipeItem> _swipeItems = new List<ISwipeItem>();
 
 		/// <include file="../../docs/Microsoft.Maui.Controls/SwipeView.xml" path="//Member[@MemberName='.ctor']/Docs/*" />
