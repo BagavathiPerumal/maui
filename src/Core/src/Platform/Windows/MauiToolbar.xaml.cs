@@ -77,7 +77,7 @@ namespace Microsoft.Maui.Platform
 					titleView.Visibility = UI.Xaml.Visibility.Visible;
 				else
 					titleView.Visibility = UI.Xaml.Visibility.Collapsed;
-			} 
+			}
 		}
 
 		internal void SetBarTextColor(WBrush? brush)
