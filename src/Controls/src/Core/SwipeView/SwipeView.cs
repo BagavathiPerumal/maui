@@ -9,7 +9,7 @@ namespace Microsoft.Maui.Controls
 {
 	/// <include file="../../docs/Microsoft.Maui.Controls/SwipeView.xml" path="Type[@FullName='Microsoft.Maui.Controls.SwipeView']/Docs/*" />
 	[ContentProperty(nameof(Content))]
-	public partial class SwipeView : ContentView, IElementConfiguration<SwipeView>, ISwipeViewController, ISwipeView, IVisualTreeElement, IControlTemplated
+	public partial class SwipeView : ContentView, IElementConfiguration<SwipeView>, ISwipeViewController, ISwipeView, IVisualTreeElement
 	{
 		readonly Lazy<PlatformConfigurationRegistry<SwipeView>> _platformConfigurationRegistry;
 		readonly List<ISwipeItem> _swipeItems = new List<ISwipeItem>();
@@ -119,13 +119,6 @@ namespace Microsoft.Maui.Controls
 
 			return elements;
 		}
-
-		/// <summary>
-		/// Explicit implementation of IControlTemplated.InternalChildren.
-		/// Returns Element.EmptyChildren instead of filtering LogicalChildrenInternal to simplify logic
-		/// while preserving SwipeItems' parent relationships and RelativeSource bindings (fixes issue #32332).
-		/// </summary>
-		IReadOnlyList<Element> IControlTemplated.InternalChildren => EmptyChildren;
 
 		protected override void OnBindingContextChanged()
 		{
