@@ -59,9 +59,13 @@ namespace Microsoft.Maui.Controls
 			var newElement = (Element)newValue;
 			if (self.ControlTemplate == null)
 			{
-				while (self.InternalChildren.Count > 0)
+				// For SwipeView, skip child removal to preserve SwipeItems
+				if (bindable is not SwipeView)
 				{
-					self.RemoveAt(self.InternalChildren.Count - 1);
+					while (self.InternalChildren.Count > 0)
+					{
+						self.RemoveAt(self.InternalChildren.Count - 1);
+					}
 				}
 
 				if (newValue != null)
@@ -75,7 +79,6 @@ namespace Microsoft.Maui.Controls
 				}
 			}
 		}
-
 		public static void OnControlTemplateChanged(BindableObject bindable, object oldValue, object newValue)
 		{
 			var self = (IControlTemplated)bindable;
