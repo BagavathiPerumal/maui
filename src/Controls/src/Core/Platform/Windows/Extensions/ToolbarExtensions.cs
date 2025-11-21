@@ -50,8 +50,11 @@ namespace Microsoft.Maui.Controls.Platform
 		{
 			_ = toolbar.Handler?.MauiContext ?? throw new ArgumentNullException(nameof(toolbar.Handler.MauiContext));
 
-			// Disconnect the handler to remove the platform view from its previous WinUI parent container.
-			toolbar.TitleView?.Handler?.DisconnectHandler();
+			if (toolbar.TitleView?.Handler != null)
+			{
+				// Disconnect the handler to ensure the TitleView is properly detached when reusing the same page instance.
+				toolbar.TitleView.Handler.DisconnectHandler();
+			}
 
 			platformToolbar.TitleView = toolbar.TitleView?.ToPlatform(toolbar.Handler.MauiContext);
 
