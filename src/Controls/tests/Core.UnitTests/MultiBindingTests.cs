@@ -56,7 +56,7 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 		}
 
 		[Fact]
-		public void MultiBindingContinuesUpdatingAfterConvertBack()
+		public void TestMultiBindingContinuesUpdatingAfterConvertBack()
 		{
 			var group = new GroupViewModel();
 			var stack = new StackLayout
