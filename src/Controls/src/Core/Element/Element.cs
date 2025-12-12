@@ -941,9 +941,9 @@ namespace Microsoft.Maui.Controls
 				if (ns != null)
 					return ns;
 			} while ((element = element.RealParent) != null);
-
 			return null;
 		}
+
 		void OnDescendantAdded(Element child)
 		{
 			DescendantAdded?.Invoke(this, new ElementEventArgs(child));
