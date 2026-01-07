@@ -361,5 +361,11 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			// Default
 			return true;
 		}
+
+		internal int GetEmptyViewPosition()
+		{
+			// EmptyView position depends on whether there's a header
+			return (Header != null || HeaderTemplate != null) ? 1 : 0;
+		}
 	}
 }

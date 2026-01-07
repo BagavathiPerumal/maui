@@ -109,8 +109,22 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 
 			if (adapter is EmptyViewAdapter emptyViewAdapter)
 			{
+				var widthChanged = Math.Abs(emptyViewAdapter.RecyclerViewWidth - width) > 0.01;
+				var heightChanged = Math.Abs(emptyViewAdapter.RecyclerViewHeight - height) > 0.01;
+
 				emptyViewAdapter.RecyclerViewWidth = width;
 				emptyViewAdapter.RecyclerViewHeight = height;
+
+				if (widthChanged || heightChanged)
+				{
+					// Find and request layout for the EmptyView holder
+					var emptyViewPosition = emptyViewAdapter.GetEmptyViewPosition();
+					var viewHolder = PlatformView.FindViewHolderForAdapterPosition(emptyViewPosition);
+					if (viewHolder?.ItemView != null)
+					{
+						viewHolder.ItemView.RequestLayout();
+					}
+				}
 			}
 		}
 	}
