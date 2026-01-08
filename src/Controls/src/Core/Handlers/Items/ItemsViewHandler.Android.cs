@@ -109,8 +109,9 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 
 			if (adapter is EmptyViewAdapter emptyViewAdapter)
 			{
-				var widthChanged = Math.Abs(emptyViewAdapter.RecyclerViewWidth - width) > 0.01;
-				var heightChanged = Math.Abs(emptyViewAdapter.RecyclerViewHeight - height) > 0.01;
+				double tolerance = 0.001;
+				var widthChanged = Math.Abs(emptyViewAdapter.RecyclerViewWidth - width) > tolerance;
+				var heightChanged = Math.Abs(emptyViewAdapter.RecyclerViewHeight - height) > tolerance;
 
 				emptyViewAdapter.RecyclerViewWidth = width;
 				emptyViewAdapter.RecyclerViewHeight = height;
@@ -118,7 +119,10 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 				if (widthChanged || heightChanged)
 				{
 					// Find and request layout for the EmptyView holder
-					var emptyViewPosition = emptyViewAdapter.GetEmptyViewPosition();
+					// EmptyView position depends on whether the CollectionView has a header
+					var structuredItemsView = VirtualView as StructuredItemsView;
+					var hasHeader = (structuredItemsView?.Header ?? structuredItemsView?.HeaderTemplate) is not null;
+					var emptyViewPosition = hasHeader ? 1 : 0;
 					var viewHolder = PlatformView.FindViewHolderForAdapterPosition(emptyViewPosition);
 					if (viewHolder?.ItemView != null)
 					{
