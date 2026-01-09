@@ -870,9 +870,11 @@ namespace Microsoft.Maui.Controls
 				RequestType = NavigationRequestType.PopToRoot
 			};
 
-			InvokeNavigationRequest(args);
 			var oldStack = _navStack;
 			_navStack = new List<Page> { null };
+
+			PresentedPageAppearing();
+			InvokeNavigationRequest(args);
 
 			if (args.Task != null)
 				await args.Task;
@@ -885,8 +887,6 @@ namespace Microsoft.Maui.Controls
 				oldStack[i].SendDisappearing();
 				RemovePage(oldStack[i]);
 			}
-
-			PresentedPageAppearing();
 		}
 
 		protected virtual Task OnPushAsync(Page page, bool animated)
