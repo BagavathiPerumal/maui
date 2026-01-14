@@ -211,27 +211,27 @@ namespace Microsoft.Maui.Handlers
 #if MACCATALYST
 		internal static void MapFocus(IPickerHandler handler, IPicker picker, object? args)
 		{
-		if (handler.IsConnected() && handler is PickerHandler)
-		{
-			ViewHandler.MapFocus(handler, picker, args);
-		}
-	}
-
-	internal static void MapUnfocus(IPickerHandler handler, IPicker picker, object? args)
-	{
-		if (handler.IsConnected() && handler is PickerHandler pickerHandler)
-		{
-			// Dismiss the picker controller when Unfocus() is explicitly called
-			if (pickerHandler._currentPickerController != null)
+			if (handler.IsConnected() && handler is PickerHandler)
 			{
-				var controller = pickerHandler._currentPickerController;
-				pickerHandler._currentPickerController = null;
-				controller.DismissViewController(true, null);
+				ViewHandler.MapFocus(handler, picker, args);
 			}
-			
-			ViewHandler.MapUnfocus(handler, picker, args);
 		}
-	}
+
+		internal static void MapUnfocus(IPickerHandler handler, IPicker picker, object? args)
+		{
+			if (handler.IsConnected() && handler is PickerHandler pickerHandler)
+			{
+				// Dismiss the picker controller when Unfocus() is explicitly called
+				if (pickerHandler._currentPickerController != null)
+				{
+					var controller = pickerHandler._currentPickerController;
+					pickerHandler._currentPickerController = null;
+					controller.DismissViewController(true, null);
+				}
+				
+				ViewHandler.MapUnfocus(handler, picker, args);
+			}
+		}
 #endif
 
 		void UpdatePickerFromPickerSource(PickerSource? pickerSource)
