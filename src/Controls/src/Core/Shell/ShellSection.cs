@@ -844,6 +844,7 @@ namespace Microsoft.Maui.Controls
 				RequestType = NavigationRequestType.PopToRoot
 			};
 
+			PresentedPageDisappearing();
 			var oldStack = _navStack;
 			_navStack = new List<Page> { null };
 
@@ -858,7 +859,10 @@ namespace Microsoft.Maui.Controls
 
 			for (int i = 1; i < oldStack.Count; i++)
 			{
-				oldStack[i].SendDisappearing();
+				// Send disappearing only to intermediate pages (top page already handled by PresentedPageDisappearing)
+				if (i < oldStack.Count - 1)
+					oldStack[i].SendDisappearing();
+
 				RemovePage(oldStack[i]);
 			}
 		}
