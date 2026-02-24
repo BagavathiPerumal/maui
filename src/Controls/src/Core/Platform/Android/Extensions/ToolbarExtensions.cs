@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using Android.Content;
@@ -27,7 +28,7 @@ namespace Microsoft.Maui.Controls.Platform
 		
 		// Track which ToolbarItem should currently be associated with each MenuItem ID to prevent race conditions
 		// This prevents stale async icon loading callbacks from updating the wrong toolbar items during navigation
-		static readonly Dictionary<int, WeakReference<ToolbarItem>> _menuItemToolbarItemMap = new();
+		static readonly ConcurrentDictionary<int, WeakReference<ToolbarItem>> _menuItemToolbarItemMap = new();
 
 		public static void UpdateIsVisible(this AToolbar nativeToolbar, Toolbar toolbar)
 		{
@@ -247,7 +248,7 @@ namespace Microsoft.Maui.Controls.Platform
 					if (menu.FindItem(previousMenuItem.ItemId) == null)
 					{
 						// Clean up the mapping for disposed MenuItems
-						_menuItemToolbarItemMap.Remove(previousMenuItem.ItemId);
+						_menuItemToolbarItemMap.TryRemove(previousMenuItem.ItemId, out _);
 						
 						previousMenuItem.Dispose();
 						previousMenuItems.RemoveAt(j);
@@ -272,7 +273,7 @@ namespace Microsoft.Maui.Controls.Platform
 				menu?.RemoveItem(menuItemToRemove.ItemId);
 				
 				// Clean up the mapping for disposed MenuItems
-				_menuItemToolbarItemMap.Remove(menuItemToRemove.ItemId);
+				_menuItemToolbarItemMap.TryRemove(menuItemToRemove.ItemId, out _);
 				
 				menuItemToRemove.Dispose();
 				previousMenuItems.RemoveAt(toolBarItemCount);
@@ -350,6 +351,9 @@ namespace Microsoft.Maui.Controls.Platform
 			// Track which ToolbarItem should be associated with this MenuItem to prevent race conditions
 			_menuItemToolbarItemMap[menuitem.ItemId] = new WeakReference<ToolbarItem>(item);
 			
+			// NOTE: Custom updateMenuItemIcon callbacks are responsible for their own
+			// race condition handling. The _menuItemToolbarItemMap guard only applies
+			// to the default UpdateMenuItemIcon path.
 			if (updateMenuItemIcon != null)
 				updateMenuItemIcon(context, menuitem, item);
 			else
@@ -385,13 +389,11 @@ namespace Microsoft.Maui.Controls.Platform
 					return;
 				}
 
-				if (_menuItemToolbarItemMap.TryGetValue(menuItem.ItemId, out var weakRef))
+				if (!_menuItemToolbarItemMap.TryGetValue(menuItem.ItemId, out var weakRef)
+					|| !weakRef.TryGetTarget(out var currentToolbarItem)
+					|| !ReferenceEquals(currentToolbarItem, toolBarItem))
 				{
-					// If the target was garbage collected or is a different ToolbarItem, abort
-					if (!weakRef.TryGetTarget(out var currentToolbarItem) || !ReferenceEquals(currentToolbarItem, toolBarItem))
-					{
-						return;
-					}
+					return;
 				}
 
 				if (baseDrawable != null)
