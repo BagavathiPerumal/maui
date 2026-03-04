@@ -10,20 +10,6 @@ public class Issue32983 : _IssuesUITest
 
 	public Issue32983(TestDevice device) : base(device) { }
 
-	// Reproduces the exact customer scenario from SampleMeasureIssue.zip:
-	//
-	// 1. Tap "ShowBottomSheet" button
-	// 2. HostApp creates BottomSheetContentView (ContentView wrapping CollectionView, 10 items)
-	// 3. Calls Measure(screenWidth, screenHeight) BEFORE adding the view to any visual tree
-	// 4. Uses the measured height as a custom UISheetPresentationControllerDetent height
-	// 5. Presents as a native iOS bottom sheet
-	//
-	// Bug (.NET 10, CollectionView2 handler):
-	//   Measure() returns wrong height → items are incorrectly sized or invisible:
-	//     - Too large: sheet covers full screen (detent ≈ screen height)
-	//     - Too small: sheet shows only a fraction of items (detent ≈ 0 or single item height)
-	//
-	// Expected (fixed): All 10 items ("Item #1"…"Item #10") are visible without scrolling.
 	[Test]
 	[Category(UITestCategories.CollectionView)]
 	public void BottomSheetDetentHeightIsCorrectWhenCollectionViewIsMeasuredBeforeMount()
