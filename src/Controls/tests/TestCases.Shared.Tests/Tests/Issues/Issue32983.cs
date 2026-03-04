@@ -1,3 +1,5 @@
+// This test is iOS-only: CollectionView2 (Items2/) runs on iOS; Android/Windows use Items/ (unaffected); MacCatalyst ignores UISheetPresentationController custom detents by design.
+#if IOS
 using NUnit.Framework;
 using UITest.Appium;
 using UITest.Core;
@@ -14,14 +16,11 @@ public class Issue32983 : _IssuesUITest
 	[Category(UITestCategories.CollectionView)]
 	public void BottomSheetDetentHeightIsCorrectWhenCollectionViewIsMeasuredBeforeMount()
 	{
-		if (Device != TestDevice.iOS)
-			Assert.Ignore("This test is iOS-only. The CollectionView2 pre-mount Measure() fix applies only to iOS. Android/Windows use the unaffected Items/ handler; MacCatalyst ignores UISheetPresentationController custom detents by design.");
-
 		App.WaitForElement("ShowBottomSheetButton");
 		App.Tap("ShowBottomSheetButton");
 
 		App.WaitForElement("BottomSheetCollectionView");
-
 		VerifyScreenshot();
 	}
 }
+#endif
