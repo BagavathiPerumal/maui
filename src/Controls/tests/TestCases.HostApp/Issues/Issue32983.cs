@@ -54,7 +54,7 @@ public class Issue32983 : ContentPage
     void OnShowBottomSheetClicked(object sender, EventArgs e)
     {
 #if IOS || MACCATALYST
-        var bottomSheetContent = new BottomSheetContentView();
+        var bottomSheetContent = new Issue32983BottomSheetContentView();
         var vm = new Issue32983ViewModel();
         for (int i = 0; i < 10; i++)
         {
@@ -94,9 +94,9 @@ public class Issue32983 : ContentPage
     }
 }
 
-public class BottomSheetContentView : Microsoft.Maui.Controls.ContentView
+public class Issue32983BottomSheetContentView : Microsoft.Maui.Controls.ContentView
 {
-    public BottomSheetContentView()
+    public Issue32983BottomSheetContentView()
     {
         BackgroundColor = Colors.AliceBlue;
 
