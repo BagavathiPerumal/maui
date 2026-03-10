@@ -345,21 +345,26 @@ internal class KnownMarkups
 		
 		if (extVariable is not null)
 		{
-			// When the binding uses a RelativeSource with a resolvable AncestorType,
-			// use the AncestorType as the source type for compiled binding instead of x:DataType.
-			// The AncestorType was already resolved by ProvideValueForRelativeSourceExtension
-			// and registered in context.Types, so we just look it up.
-			// When AncestorType is NOT available (e.g. Mode=Self with no AncestorType),
-			// fall through to the string-based binding.
+			// Determine the source type for compiled binding based on the binding's Source configuration:
+			//
+			// 1. RelativeSource with a resolvable AncestorType: use the AncestorType as the source
+			//    type. The symbol is already registered in context.Types by
+			//    ProvideValueForRelativeSourceExtension, enabling trim-safe TypedBinding generation.
+			//
+			// 2. RelativeSource without AncestorType (Self, TemplatedParent, or FindAncestor without
+			//    a type): the binding source is resolved at runtime. Using x:DataType as the source
+			//    type here would produce a compiled binding with an incorrect source type, leading to
+			//    runtime failures. Fall through to the string-based Binding path instead.
+			//
+			// 3. No RelativeSource: use x:DataType if available to produce a compiled TypedBinding.
 			if (TryGetRelativeSourceAncestorType(markupNode, context, out var ancestorTypeSymbol)
 				&& ancestorTypeSymbol is not null)
 			{
 				dataTypeSymbol = ancestorTypeSymbol;
 			}
-			else if (!TryGetXDataType(markupNode, context, out dataTypeSymbol)
-				|| dataTypeSymbol is null)
+			else if (!HasRelativeSourceBinding(markupNode))
 			{
-				dataTypeSymbol = null; // ensure it's null for the fallback path
+				TryGetXDataType(markupNode, context, out dataTypeSymbol);
 			}
 
 			if (dataTypeSymbol is not null)
@@ -640,11 +645,24 @@ internal class KnownMarkups
 				&& propertyName.LocalName == "BindingContext";
 		}
 
+		// Returns true if the binding has a Source property referencing any RelativeSource extension,
+		// regardless of RelativeSource mode. When RelativeSource is present without a resolvable
+		// AncestorType, the binding source is determined at runtime and x:DataType must not be
+		// used as the source type for compiled binding generation.
+		static bool HasRelativeSourceBinding(ElementNode bindingNode)
+		{
+			if (!bindingNode.Properties.TryGetValue(new XmlName("", "Source"), out INode? sourceNode)
+				&& !bindingNode.Properties.TryGetValue(new XmlName(null, "Source"), out sourceNode))
+				return false;
+
+			return sourceNode is ElementNode node
+				&& (node.XmlType.Name == "RelativeSourceExtension" || node.XmlType.Name == "RelativeSource");
+		}
+
 		// Checks if the binding has a Source property that is a RelativeSource extension
 		// with a resolvable AncestorType. If so, returns the already-resolved AncestorType
 		// symbol from context.Types (populated earlier by ProvideValueForRelativeSourceExtension).
-		// This allows RelativeSource bindings to use the compiled (trim-safe) TypedBinding
-		// path when the source type is known, instead of falling back to the string-based Binding.
+		// This allows AncestorType bindings to use the compiled (trim-safe) TypedBinding path.
 		static bool TryGetRelativeSourceAncestorType(ElementNode bindingNode, SourceGenContext context, out ITypeSymbol? ancestorType)
 		{
 			ancestorType = null;

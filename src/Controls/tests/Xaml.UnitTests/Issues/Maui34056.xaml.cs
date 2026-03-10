@@ -52,11 +52,37 @@ public partial class Maui34056 : ContentPage
             {
                 // Both XamlC and SourceGen produce a trim-safe TypedBinding when x:DataType is present
                 // on the binding node alongside RelativeSource AncestorType.
-                // - XamlC: compiles using the explicit x:DataType on the binding node.
-                // - SourceGen (the bug fix): infers source type from AncestorType via context.Types lookup.
-                //   Previously SourceGen always fell back to string-based Binding for RelativeSource,
-                //   which was trimmed under AOT/Release.
                 Assert.IsType<TypedBinding<Maui34056PageViewModel, ICommand>>(binding);
+            }
+        }
+
+        [Theory]
+        [XamlInflatorData]
+        internal void RelativeSourceSelfInDataTemplateWithXDataTypeUsesStringBinding(XamlInflator inflator)
+        {
+            // Verifies SourceGen does not use the DataTemplate's x:DataType as the source type for
+            // {RelativeSource Self} bindings. The source is the element itself, resolved at runtime.
+            // Path=ItemName exists on Maui34056ItemViewModel to ensure the guard is what prevents
+            // compiled binding, not a failed type lookup. XamlC behavior is pre-existing and separate.
+            var page = new Maui34056(inflator);
+
+            var template = ((CollectionView)page.SelfBindingCollectionView).ItemTemplate;
+            var content = template.CreateContent() as Label;
+            Assert.NotNull(content);
+
+            var binding = content.GetContext(Label.TextProperty)?.Bindings.GetValue();
+
+            if (inflator is XamlInflator.XamlC)
+            {
+                // XamlC pre-existing behavior: compiles RelativeSource Self using DataTemplate x:DataType.
+                // This is a separate issue, not addressed by this fix.
+                Assert.IsType<TypedBinding<Maui34056ItemViewModel, string>>(binding);
+            }
+            else
+            {
+                // Runtime: no compile-time type info, always string-based Binding.
+                // SourceGen (the fix): HasRelativeSourceBinding blocks x:DataType path for Self bindings.
+                Assert.IsType<Binding>(binding);
             }
         }
     }
