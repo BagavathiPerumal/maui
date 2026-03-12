@@ -1,3 +1,4 @@
+﻿#if TEST_FAILS_ON_WINDOWS // EmptyView elements are not accessible via Automation on Windows. Issue Link: https://github.com/dotnet/maui/issues/28022
 using NUnit.Framework;
 using UITest.Appium;
 using UITest.Core;
@@ -53,3 +54,4 @@ public class Issue34122 : _IssuesUITest
 			$"'{unexpectedEmptyViewButtonId}' should not be visible while '{expectedEmptyViewButtonId}' is active.");
 	}
 }
+#endif
