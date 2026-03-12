@@ -6,6 +6,9 @@ namespace Microsoft.Maui.TestCases.Tests.Issues;
 
 public class Issue34122 : _IssuesUITest
 {
+	const string BasicEmptyViewButtonId = "BasicEmptyViewButton";
+	const string AdvancedEmptyViewButtonId = "AdvancedEmptyViewButton";
+
 	public override string Issue => "I5_EmptyView_Swap - Continuously turning the Toggle EmptyViews on and off would cause an item from the list to show up";
 
 	public Issue34122(TestDevice device) : base(device) { }
@@ -14,8 +17,6 @@ public class Issue34122 : _IssuesUITest
 	[Category(UITestCategories.CollectionView)]
 	public void EmptyViewSwapShouldNotRevealFilteredOutItems()
 	{
-		Exception? exception = null;
-
 		// Verify items are visible initially
 		App.WaitForElement("Baboon");
 
@@ -24,29 +25,31 @@ public class Issue34122 : _IssuesUITest
 		// the state that triggers the EmptyView-swap bug.
 		App.WaitForElement("FilterButton");
 		App.Tap("FilterButton");
-		VerifyScreenshotOrSetException(ref exception, "Issue34122_AdvancedEmptyView", retryTimeout: TimeSpan.FromSeconds(1));
+		AssertEmptyViewState(AdvancedEmptyViewButtonId, BasicEmptyViewButtonId);
 
 		App.WaitForElement("ToggleEmptyViewButton");
 
-		// Reuse the same screenshot names so later toggles compare against the first
-		// correct BasicEmptyView/AdvancedEmptyView states and catch visual leaks.
 		for (int i = 1; i <= 8; i++)
 		{
 			App.Tap("ToggleEmptyViewButton");
 
 			if (i % 2 == 1) // odd → BasicEmptyView
 			{
-				VerifyScreenshotOrSetException(ref exception, "Issue34122_BasicEmptyView", retryTimeout: TimeSpan.FromSeconds(1));
+				AssertEmptyViewState(BasicEmptyViewButtonId, AdvancedEmptyViewButtonId);
 			}
 			else // even → AdvancedEmptyView
 			{
-				VerifyScreenshotOrSetException(ref exception, "Issue34122_AdvancedEmptyView", retryTimeout: TimeSpan.FromSeconds(1));
+				AssertEmptyViewState(AdvancedEmptyViewButtonId, BasicEmptyViewButtonId);
 			}
 		}
+	}
 
-		if (exception != null)
-		{
-			throw exception;
-		}
+	void AssertEmptyViewState(string expectedEmptyViewButtonId, string unexpectedEmptyViewButtonId)
+	{
+		Assert.That(App.FindElements(expectedEmptyViewButtonId), Is.Not.Empty,
+			$"Expected empty view '{expectedEmptyViewButtonId}' was not visible.");
+
+		Assert.That(App.FindElements(unexpectedEmptyViewButtonId), Is.Empty,
+			$"'{unexpectedEmptyViewButtonId}' should not be visible while '{expectedEmptyViewButtonId}' is active.");
 	}
 }

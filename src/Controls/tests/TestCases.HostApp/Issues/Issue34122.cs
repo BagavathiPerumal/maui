@@ -33,10 +33,10 @@ public class Issue34122 : ContentPage
 			BackgroundColor = Colors.LightBlue,
 			Children =
 			{
-				new Label
+				new Button
 				{
 					Text = "No items to display.",
-					AutomationId = "BasicEmptyViewLabel",
+					AutomationId = "BasicEmptyViewButton",
 					HorizontalOptions = LayoutOptions.Center,
 					FontAttributes = FontAttributes.Bold,
 					FontSize = 18
@@ -50,10 +50,10 @@ public class Issue34122 : ContentPage
 			BackgroundColor = Colors.LightYellow,
 			Children =
 			{
-				new Label
+				new Button
 				{
 					Text = "No results matched your filter.",
-					AutomationId = "AdvancedEmptyViewLabel",
+					AutomationId = "AdvancedEmptyViewButton",
 					HorizontalOptions = LayoutOptions.Center,
 					FontAttributes = FontAttributes.Bold,
 					FontSize = 18
