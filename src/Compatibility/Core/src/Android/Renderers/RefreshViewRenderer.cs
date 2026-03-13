@@ -22,6 +22,7 @@ namespace Microsoft.Maui.Controls.Compatibility.Platform.Android
 		bool _isDisposed;
 		bool _init;
 		bool _refreshing;
+		bool _touchStartedInWebView;
 		IVisualElementRenderer _renderer;
 		int? _defaultLabelFor;
 
@@ -31,7 +32,6 @@ namespace Microsoft.Maui.Controls.Compatibility.Platform.Android
 		public RefreshViewRenderer(Context context)
 			: base(context)
 		{
-
 		}
 
 		public VisualElementTracker Tracker { get; private set; }
@@ -62,6 +62,25 @@ namespace Microsoft.Maui.Controls.Compatibility.Platform.Android
 		}
 
 		public override bool CanChildScrollUp() => CanScrollUp(_renderer.View);
+
+		public override bool OnInterceptTouchEvent(MotionEvent ev)
+		{
+			switch (ev.ActionMasked)
+			{
+				case MotionEventActions.Down:
+					_touchStartedInWebView = TouchStartsInWebView(_renderer?.View, ev.GetX(), ev.GetY());
+					break;
+				case MotionEventActions.Cancel:
+				case MotionEventActions.Up:
+					_touchStartedInWebView = false;
+					break;
+			}
+
+			if (_touchStartedInWebView && ev.ActionMasked == MotionEventActions.Move)
+				return false;
+
+			return base.OnInterceptTouchEvent(ev);
+		}
 
 		protected override void OnLayout(bool changed, int l, int t, int r, int b)
 		{
@@ -189,9 +208,35 @@ namespace Microsoft.Maui.Controls.Compatibility.Platform.Android
 				return nestedScrollView.ComputeVerticalScrollOffset() > 0;
 
 			if (view is AWebView webView)
-				return webView.ScrollY > 0;
+				return webView.CanScrollVertically(-1) || webView.ScrollY > 0;
 
 			return true;
+		}
+
+		static bool TouchStartsInWebView(AView view, float x, float y)
+		{
+			if (view == null || view.Visibility != ViewStates.Visible)
+				return false;
+
+			if (x < view.Left || x > view.Right || y < view.Top || y > view.Bottom)
+				return false;
+
+			if (view is AWebView)
+				return true;
+
+			if (!(view is ViewGroup viewGroup))
+				return false;
+
+			var localX = x - view.Left;
+			var localY = y - view.Top;
+
+			for (int i = viewGroup.ChildCount - 1; i >= 0; i--)
+			{
+				if (TouchStartsInWebView(viewGroup.GetChildAt(i), localX, localY))
+					return true;
+			}
+
+			return false;
 		}
 
 		public void OnRefresh()

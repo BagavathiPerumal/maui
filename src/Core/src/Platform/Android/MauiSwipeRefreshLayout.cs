@@ -19,6 +19,7 @@ namespace Microsoft.Maui.Platform
 		readonly Context _context;
 		AView? _contentView;
 		bool _refreshEnabled = true;
+		bool _touchStartedInWebView;
 
 		public MauiSwipeRefreshLayout(Context context) : base(context)
 		{
@@ -110,6 +111,28 @@ namespace Microsoft.Maui.Platform
 			return CanScrollUp(_contentView);
 		}
 
+		public override bool OnInterceptTouchEvent(MotionEvent? ev)
+		{
+			if (ev is null)
+				return false;
+
+			switch (ev.ActionMasked)
+			{
+				case MotionEventActions.Down:
+					_touchStartedInWebView = TouchStartsInWebView(_contentView, ev.GetX(), ev.GetY());
+					break;
+				case MotionEventActions.Cancel:
+				case MotionEventActions.Up:
+					_touchStartedInWebView = false;
+					break;
+			}
+
+			if (_touchStartedInWebView && ev.ActionMasked == MotionEventActions.Move)
+				return false;
+
+			return base.OnInterceptTouchEvent(ev);
+		}
+
 		bool CanScrollUp(AView? view)
 		{
 			if (!(view is ViewGroup viewGroup))
@@ -157,9 +180,35 @@ namespace Microsoft.Maui.Platform
 #pragma warning restore XAOBS001 // Obsolete
 
 			if (view is AWebView webView)
-				return webView.ScrollY > 0;
+				return webView.CanScrollVertically(-1) || webView.ScrollY > 0;
 
 			return true;
+		}
+
+		static bool TouchStartsInWebView(AView? view, float x, float y)
+		{
+			if (view is null || view.Visibility != ViewStates.Visible)
+				return false;
+
+			if (x < view.Left || x > view.Right || y < view.Top || y > view.Bottom)
+				return false;
+
+			if (view is AWebView)
+				return true;
+
+			if (view is not ViewGroup viewGroup)
+				return false;
+
+			var localX = x - view.Left;
+			var localY = y - view.Top;
+
+			for (int i = viewGroup.ChildCount - 1; i >= 0; i--)
+			{
+				if (TouchStartsInWebView(viewGroup.GetChildAt(i), localX, localY))
+					return true;
+			}
+
+			return false;
 		}
 	}
 }
