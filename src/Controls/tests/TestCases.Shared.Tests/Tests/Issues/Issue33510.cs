@@ -1,4 +1,4 @@
-#if ANDROID
+#if ANDROID // This test is Android-only because Issue #33510 (RefreshView triggering pull-to-refresh when scrolling inside a WebView) only reproduces on Android, and the test uses Android-specific Appium touch gesture APIs.
 using System.Globalization;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
