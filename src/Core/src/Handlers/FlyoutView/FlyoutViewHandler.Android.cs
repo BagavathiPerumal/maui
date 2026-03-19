@@ -311,6 +311,12 @@ namespace Microsoft.Maui.Handlers
 
 		protected override void DisconnectHandler(View platformView)
 		{
+			if (OperatingSystem.IsAndroidVersionAtLeast(36))
+			{
+				_pendingFragment?.Dispose();
+				_pendingFragment = null;
+			}
+
 			MauiWindowInsetListener.UnregisterView(platformView);
 			if (_navigationRoot is CoordinatorLayout cl)
 			{
@@ -320,6 +326,16 @@ namespace Microsoft.Maui.Handlers
 
 			if (platformView is DrawerLayout dl)
 			{
+				if (OperatingSystem.IsAndroidVersionAtLeast(36))
+				{
+					if (_flyoutView is not null && _flyoutView.Parent == dl)
+						dl.CloseDrawer(_flyoutView, false);
+					else
+						dl.CloseDrawers();
+
+					dl.SetDrawerLockMode(DrawerLayout.LockModeLockedClosed);
+				}
+
 				dl.DrawerStateChanged -= OnDrawerStateChanged;
 				dl.ViewAttachedToWindow -= DrawerLayoutAttached;
 			}

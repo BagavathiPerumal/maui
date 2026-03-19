@@ -643,7 +643,12 @@ namespace Microsoft.Maui.Controls
 		static void OnPageChanging(BindableObject bindable, object oldValue, object newValue)
 		{
 			if (oldValue is Page oldPage)
+			{
+				if (oldPage is FlyoutPage && OperatingSystem.IsAndroidVersionAtLeast(36))
+					oldPage.Handler?.DisconnectHandler();
+
 				oldPage.SendDisappearing();
+			}
 		}
 
 		static void OnIsActivatedPropertyChanged(BindableObject bindable, object oldValue, object newValue)
