@@ -19,6 +19,8 @@ namespace Microsoft.Maui.Platform
 		readonly Context _context;
 		AView? _contentView;
 		bool _refreshEnabled = true;
+		AWebView? _activeTouchWebView;
+		bool _webViewOwnsGesture;
 		bool _touchStartedInWebView;
 
 		public MauiSwipeRefreshLayout(Context context) : base(context)
@@ -119,16 +121,24 @@ namespace Microsoft.Maui.Platform
 			switch (ev.ActionMasked)
 			{
 				case MotionEventActions.Down:
-					_touchStartedInWebView = TouchStartsInWebView(_contentView, ev.GetX(), ev.GetY());
+					_activeTouchWebView = FindWebView(_contentView, ev.GetX(), ev.GetY());
+					_touchStartedInWebView = _activeTouchWebView is not null;
+					_webViewOwnsGesture = _touchStartedInWebView &&
+						RefreshViewWebViewScrollCapture.TryGetCanScrollUp(_activeTouchWebView, out var canScrollUpAtStart) &&
+						canScrollUpAtStart;
 					break;
 				case MotionEventActions.Cancel:
 				case MotionEventActions.Up:
+					_activeTouchWebView = null;
 					_touchStartedInWebView = false;
+					_webViewOwnsGesture = false;
 					break;
 			}
 
-			if (_touchStartedInWebView && ev.ActionMasked == MotionEventActions.Move)
+			if (_touchStartedInWebView && _webViewOwnsGesture)
+			{
 				return false;
+			}
 
 			return base.OnInterceptTouchEvent(ev);
 		}
@@ -180,35 +190,36 @@ namespace Microsoft.Maui.Platform
 #pragma warning restore XAOBS001 // Obsolete
 
 			if (view is AWebView webView)
-				return webView.CanScrollVertically(-1) || webView.ScrollY > 0;
+				return RefreshViewWebViewScrollCapture.TryGetCanScrollUp(webView, out var canScrollUp) && canScrollUp;
 
 			return true;
 		}
 
-		static bool TouchStartsInWebView(AView? view, float x, float y)
+		static AWebView? FindWebView(AView? view, float x, float y)
 		{
 			if (view is null || view.Visibility != ViewStates.Visible)
-				return false;
+				return null;
 
 			if (x < view.Left || x > view.Right || y < view.Top || y > view.Bottom)
-				return false;
+				return null;
 
 			if (view is AWebView)
-				return true;
+				return (AWebView)view;
 
 			if (view is not ViewGroup viewGroup)
-				return false;
+				return null;
 
 			var localX = x - view.Left;
 			var localY = y - view.Top;
 
 			for (int i = viewGroup.ChildCount - 1; i >= 0; i--)
 			{
-				if (TouchStartsInWebView(viewGroup.GetChildAt(i), localX, localY))
-					return true;
+				var webView = FindWebView(viewGroup.GetChildAt(i), localX, localY);
+				if (webView is not null)
+					return webView;
 			}
 
-			return false;
+			return null;
 		}
 	}
 }

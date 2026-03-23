@@ -52,6 +52,23 @@ public class Issue33510 : TestContentPage
 
 		readScrollTopButton.Clicked += async (_, _) => await UpdateScrollStatusAsync();
 
+		var scrollWebViewToTopButton = new Button
+		{
+			AutomationId = "ScrollWebViewToTopButton",
+			Text = "Scroll WebView to top"
+		};
+
+		scrollWebViewToTopButton.Clicked += async (_, _) =>
+		{
+			if (!_isWebViewLoaded)
+			{
+				return;
+			}
+
+			var result = await _webView.EvaluateJavaScriptAsync("window.scrollInnerContainerTo(0);");
+			_scrollTopLabel.Text = $"ScrollTop: {NormalizeJavaScriptNumber(result)}";
+		};
+
 		_webView = new WebView
 		{
 			AutomationId = "TestWebView",
@@ -106,6 +123,7 @@ public class Issue33510 : TestContentPage
 				_statusLabel,
 				_scrollTopLabel,
 				scrollWebViewButton,
+				scrollWebViewToTopButton,
 				readScrollTopButton
 			}
 		};
@@ -182,14 +200,22 @@ public class Issue33510 : TestContentPage
 		html.AppendLine(rows);
 		html.AppendLine("</div>");
 		html.AppendLine("<script>");
+		html.AppendLine("window.notifyRefreshViewScrollState = function () {");
+		html.AppendLine("  if (window.mauiRefreshViewHost && typeof window.mauiRefreshViewHost.setCanScrollUp === 'function') {");
+		html.AppendLine("      var container = document.getElementById('scroll-container');");
+		html.AppendLine("      window.mauiRefreshViewHost.setCanScrollUp(container.scrollTop > 0);");
+		html.AppendLine("  }");
+		html.AppendLine("};");
 		html.AppendLine("window.getInnerScrollTop = function () {");
 		html.AppendLine("  return document.getElementById('scroll-container').scrollTop.toString();");
 		html.AppendLine("};");
 		html.AppendLine("window.scrollInnerContainerTo = function (value) {");
 		html.AppendLine("  var container = document.getElementById('scroll-container');");
 		html.AppendLine("  container.scrollTop = value;");
+		html.AppendLine("  window.notifyRefreshViewScrollState();");
 		html.AppendLine("  return container.scrollTop.toString();");
 		html.AppendLine("};");
+		html.AppendLine("window.notifyRefreshViewScrollState();");
 		html.AppendLine("</script>");
 		html.AppendLine("</body>");
 		html.AppendLine("</html>");

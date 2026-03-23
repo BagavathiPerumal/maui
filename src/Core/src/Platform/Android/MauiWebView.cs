@@ -13,6 +13,7 @@ namespace Microsoft.Maui.Platform
 		public MauiWebView(WebViewHandler handler, Context context) : base(context)
 		{
 			_handler = handler ?? throw new ArgumentNullException(nameof(handler));
+			RefreshViewWebViewScrollCapture.Attach(this);
 		}
 
 		void IWebViewDelegate.LoadHtml(string? html, string? baseUrl)
@@ -36,6 +37,14 @@ namespace Microsoft.Maui.Platform
 
 				LoadUrl(url ?? string.Empty);
 			}
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			if (disposing)
+				RefreshViewWebViewScrollCapture.Detach(this);
+
+			base.Dispose(disposing);
 		}
 	}
 }
