@@ -12,6 +12,7 @@ using Microsoft.Maui;
 using Microsoft.Maui.Controls.Internals;
 using Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific;
 using Microsoft.Maui.Graphics;
+using Microsoft.Maui.Platform;
 
 namespace Microsoft.Maui.Controls
 {
@@ -634,6 +635,11 @@ namespace Microsoft.Maui.Controls
 
 			OnAppearing();
 			Appearing?.Invoke(this, EventArgs.Empty);
+
+#if ANDROID
+			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
+				?.UpdatePredictiveBackRegistration();
+#endif
 
 			var pageContainer = this as IPageContainer<Page>;
 			pageContainer?.CurrentPage?.SendAppearing();

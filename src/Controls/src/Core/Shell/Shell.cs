@@ -17,6 +17,7 @@ using Microsoft.Maui.Controls.Internals;
 using Microsoft.Maui.Controls.Xaml.Diagnostics;
 using Microsoft.Maui.Devices;
 using Microsoft.Maui.Graphics;
+using Microsoft.Maui.Platform;
 
 namespace Microsoft.Maui.Controls
 {
@@ -1703,6 +1704,11 @@ namespace Microsoft.Maui.Controls
 				try
 				{
 					await currentContent.Navigation.PopAsync();
+
+#if ANDROID
+					(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
+						?.UpdatePredictiveBackRegistration();
+#endif
 				}
 				catch (Exception exc)
 				{
@@ -1756,6 +1762,11 @@ namespace Microsoft.Maui.Controls
 				CurrentPage.PropertyChanged += OnCurrentPagePropertyChanged;
 
 			CurrentItem?.Handler?.UpdateValue(Shell.TabBarIsVisibleProperty.PropertyName);
+
+#if ANDROID
+			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
+				?.UpdatePredictiveBackRegistration();
+#endif
 		}
 
 		void OnCurrentPageLoaded(object sender, EventArgs e)
@@ -2212,7 +2223,13 @@ namespace Microsoft.Maui.Controls
 		{
 			base.OnPropertyChanged(propertyName);
 			if (propertyName == Shell.FlyoutIsPresentedProperty.PropertyName)
+			{
 				Handler?.UpdateValue(nameof(IFlyoutView.IsPresented));
+#if ANDROID
+				(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
+					?.UpdatePredictiveBackRegistration();
+#endif
+			}
 		}
 
 		#region Shell Flyout Content

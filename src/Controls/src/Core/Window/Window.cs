@@ -726,12 +726,21 @@ namespace Microsoft.Maui.Controls
 
 		bool IWindow.BackButtonClicked()
 		{
+			bool handled;
+
 			if (Navigation.ModalStack.Count > 0)
 			{
-				return Navigation.ModalStack[Navigation.ModalStack.Count - 1].SendBackButtonPressed();
+				handled = Navigation.ModalStack[Navigation.ModalStack.Count - 1].SendBackButtonPressed();
+			}
+			else
+			{
+				handled = this.Page?.SendBackButtonPressed() ?? false;
 			}
 
-			return this.Page?.SendBackButtonPressed() ?? false;
+#if ANDROID
+			RefreshPredictiveBackRegistration();
+#endif
+			return handled;
 		}
 
 		static double ValidatePositive(double value, [CallerMemberName] string? name = null) =>

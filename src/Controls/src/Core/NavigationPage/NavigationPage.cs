@@ -5,9 +5,11 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls.Internals;
 using Microsoft.Maui.Graphics;
+using Microsoft.Maui.Platform;
 
 namespace Microsoft.Maui.Controls
 {
@@ -547,6 +549,11 @@ namespace Microsoft.Maui.Controls
 
 			if (newValue is Page newPage && ((NavigationPage)bindable).HasAppeared)
 				newPage.SendAppearing();
+
+#if ANDROID
+			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
+				?.UpdatePredictiveBackRegistration();
+#endif
 		}
 
 		internal IToolbar FindMyToolbar()
