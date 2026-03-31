@@ -644,9 +644,9 @@ namespace Microsoft.Maui.Controls
 		{
 			if (oldValue is Page oldPage)
 			{
-				if (oldPage is FlyoutPage && OperatingSystem.IsAndroidVersionAtLeast(36))
-					oldPage.Handler?.DisconnectHandler();
-
+#if ANDROID
+				(oldPage as FlyoutPage)?.ReleaseDrawerCallbackBeforePageChange();
+#endif
 				oldPage.SendDisappearing();
 			}
 		}
