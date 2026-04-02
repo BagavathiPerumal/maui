@@ -209,16 +209,13 @@ public class Issue34594 : TestShell
 			if (Microsoft.Maui.ApplicationModel.Platform.CurrentActivity is not AppCompatActivity activity)
 				return "PredictiveBackEvaluation=Unavailable";
 
-			var activityType = typeof(Microsoft.Maui.MauiAppCompatActivity);
-			var updateCountField = activityType.GetField("_predictiveBackRegistrationUpdateCount", BindingFlags.Instance | BindingFlags.NonPublic);
-			var lastShouldRegisterField = activityType.GetField("_lastPredictiveBackShouldRegister", BindingFlags.Instance | BindingFlags.NonPublic);
-			var handlerAnalysisField = activityType.GetField("_lastPredictiveBackHandlerAnalysis", BindingFlags.Instance | BindingFlags.NonPublic);
+			var callbackField = typeof(Microsoft.Maui.MauiAppCompatActivity)
+				.GetField("_mauiOnBackPressedCallback", BindingFlags.Instance | BindingFlags.NonPublic);
+			var callback = callbackField?.GetValue(activity);
+			var enabledProperty = callback?.GetType().GetProperty("Enabled", BindingFlags.Instance | BindingFlags.Public);
+			var enabled = enabledProperty?.GetValue(callback);
 
-			var updateCount = updateCountField?.GetValue(activity);
-			var lastShouldRegister = lastShouldRegisterField?.GetValue(activity);
-			var handlerAnalysis = handlerAnalysisField?.GetValue(activity);
-
-			return $"PredictiveBackEvaluation=Count:{updateCount ?? "null"};ShouldRegister:{lastShouldRegister ?? "null"};Analysis:{handlerAnalysis ?? "null"}";
+			return $"PredictiveBackEvaluation=CallbackEnabled:{enabled ?? "null"}";
 #else
 			return "PredictiveBackEvaluation=Unavailable";
 #endif

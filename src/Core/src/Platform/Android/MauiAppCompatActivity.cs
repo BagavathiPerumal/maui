@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Reflection;
 using Android.OS;
 using Android.Views;
 using AndroidX.Activity;
@@ -14,9 +13,6 @@ namespace Microsoft.Maui
 {
 	public partial class MauiAppCompatActivity : AppCompatActivity
 	{
-		static readonly string s_defaultWindowBackHandlerName = nameof(AppHostBuilderExtensions.HandleWindowBackButtonPressed);
-		static readonly string s_defaultWindowBackHandlerTypeFullName = "Microsoft.Maui.LifecycleEvents.AppHostBuilderExtensions";
-
 		// Override this if you want to handle the default Android behavior of restoring fragments on an application restart
 		protected virtual bool AllowFragmentRestore => false;
 
@@ -94,18 +90,10 @@ namespace Microsoft.Maui
 			if (backHandlers.Length == 0)
 				return false;
 
-			var hasCustomBackHandler = backHandlers.Any(static handler => !IsIgnoredPredictiveBackHandler(handler.Method));
+			var hasCustomBackHandler = backHandlers.Any(handler => handler != AppHostBuilderExtensions.DefaultWindowBackHandler);
 
 			return hasCustomBackHandler || this.GetWindow() is IBackNavigationState { CanConsumeBackNavigation: true };
 		}
-
-		static bool IsIgnoredPredictiveBackHandler(MethodInfo method) =>
-			IsDefaultWindowBackHandler(method);
-
-		static bool IsDefaultWindowBackHandler(MethodInfo method) =>
-			method.IsStatic &&
-			method.Name == s_defaultWindowBackHandlerName &&
-			method.DeclaringType?.FullName == s_defaultWindowBackHandlerTypeFullName;
 
 		sealed class MauiOnBackPressedCallback : OnBackPressedCallback
 		{

@@ -10,9 +10,7 @@ namespace Microsoft.Maui.Controls
 	public partial class Window : IPlatformEventsListener, IBackNavigationState
 	{
 		bool IBackNavigationState.CanConsumeBackNavigation =>
-			Navigation.ModalStack.Count > 0
-				? CanConsumeBackNavigation(Navigation.ModalStack[Navigation.ModalStack.Count - 1])
-				: CanConsumeBackNavigation(Page);
+			Navigation.ModalStack.Count > 0 || CanConsumeBackNavigation(Page);
 
 		static bool CanConsumeBackNavigation(Page? page)
 		{
@@ -28,7 +26,7 @@ namespace Microsoft.Maui.Controls
 					if (shell.FlyoutIsPresented && shell.GetEffectiveFlyoutBehavior() != FlyoutBehavior.Locked)
 						return true;
 
-					return shell.Navigation.NavigationStack.Count > 1;
+					return shell.CurrentItem?.CurrentItem.Stack.Count > 1;
 
 				case NavigationPage navigationPage:
 					if (CanConsumeBackNavigation(navigationPage.CurrentPage))
@@ -37,7 +35,7 @@ namespace Microsoft.Maui.Controls
 					return navigationPage.Navigation.NavigationStack.Count > 1;
 
 				case FlyoutPage flyoutPage:
-					if (flyoutPage.IsPresented && CanConsumeBackNavigation(flyoutPage.Flyout))
+					if (flyoutPage.IsPresented)
 						return true;
 
 					if (flyoutPage.HasBackButtonPressedSubscribers)
