@@ -2226,8 +2226,9 @@ namespace Microsoft.Maui.Controls
 			{
 				Handler?.UpdateValue(nameof(IFlyoutView.IsPresented));
 #if ANDROID
-				(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
-					?.UpdatePredictiveBackRegistration();
+			// Refresh Enabled on the predictive back callback; flyout state affects whether back is consumed here.
+			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
+				?.UpdatePredictiveBackRegistration();
 #endif
 			}
 		}

@@ -551,6 +551,7 @@ namespace Microsoft.Maui.Controls
 				newPage.SendAppearing();
 
 #if ANDROID
+			// Refresh Enabled on the predictive back callback when the active page changes.
 			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
 				?.UpdatePredictiveBackRegistration();
 #endif

@@ -1,4 +1,3 @@
-#if ANDROID
 namespace Microsoft.Maui
 {
 	interface IBackNavigationState
@@ -6,4 +5,3 @@ namespace Microsoft.Maui
 		bool CanConsumeBackNavigation { get; }
 	}
 }
-#endif

@@ -738,6 +738,7 @@ namespace Microsoft.Maui.Controls
 			}
 
 #if ANDROID
+			// Refresh Enabled on the predictive back callback after a back press changes the navigation state.
 			RefreshPredictiveBackRegistration();
 #endif
 			return handled;

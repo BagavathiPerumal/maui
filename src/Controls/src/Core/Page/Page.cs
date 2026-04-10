@@ -637,6 +637,7 @@ namespace Microsoft.Maui.Controls
 			Appearing?.Invoke(this, EventArgs.Empty);
 
 #if ANDROID
+			// Refresh Enabled on the predictive back callback so the animation preview reflects the new state.
 			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
 				?.UpdatePredictiveBackRegistration();
 #endif

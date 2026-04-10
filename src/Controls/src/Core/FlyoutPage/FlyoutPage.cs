@@ -272,6 +272,7 @@ namespace Microsoft.Maui.Controls
 		public event EventHandler<BackButtonPressedEventArgs> BackButtonPressed;
 
 #if ANDROID
+		// Used by Window.Android.cs to check for BackButtonPressed subscribers without dispatching the event.
 		internal bool HasBackButtonPressedSubscribers => BackButtonPressed is not null;
 #endif
 

@@ -69,7 +69,10 @@ namespace Microsoft.Maui
 
 		MauiOnBackPressedCallback? _mauiOnBackPressedCallback;
 
-		internal void UpdatePredictiveBackRegistration()
+		// Must be called at every navigation state change so that Enabled reflects the current back
+		// stack before the predictive back drag preview starts (Android reads Enabled before commit).
+		// Call sites: Page.SendAppearing, Shell.SendNavigated, NavigationPage, Window, BlazorWebViewHandler.
+		public void UpdatePredictiveBackRegistration()
 		{
 			if (_mauiOnBackPressedCallback is null)
 				return;
@@ -83,14 +86,21 @@ namespace Microsoft.Maui
 			if (services is null)
 				return false;
 
-			var backHandlers = services
-				.GetLifecycleEventDelegates<AndroidLifecycle.OnBackPressed>()
-				.ToArray();
+			// Iterate with early exit to avoid per-navigation heap allocation from ToArray()/Any().
+			bool hasAnyHandler = false;
+			bool hasCustomBackHandler = false;
+			foreach (var handler in services.GetLifecycleEventDelegates<AndroidLifecycle.OnBackPressed>())
+			{
+				hasAnyHandler = true;
+				if (handler != AppHostBuilderExtensions.DefaultWindowBackHandler)
+				{
+					hasCustomBackHandler = true;
+					break;
+				}
+			}
 
-			if (backHandlers.Length == 0)
+			if (!hasAnyHandler)
 				return false;
-
-			var hasCustomBackHandler = backHandlers.Any(handler => handler != AppHostBuilderExtensions.DefaultWindowBackHandler);
 
 			return hasCustomBackHandler || this.GetWindow() is IBackNavigationState { CanConsumeBackNavigation: true };
 		}
