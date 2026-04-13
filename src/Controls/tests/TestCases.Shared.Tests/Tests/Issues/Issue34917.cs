@@ -1,0 +1,56 @@
+using NUnit.Framework;
+using UITest.Appium;
+using UITest.Core;
+
+namespace Microsoft.Maui.TestCases.Tests.Issues;
+
+public class Issue34917 : _IssuesUITest
+{
+	public Issue34917(TestDevice device) : base(device) { }
+
+	public override string Issue => "[net 11.0][iOS,MacCatalyst] SwipeView.Open() throws ArgumentException on second programmatic call";
+
+	[Test]
+	[Category(UITestCategories.SwipeView)]
+	public void SwipeViewOpenRightDoesNotThrowOnSecondCall()
+	{
+		App.WaitForElement(OpenRightButtonId);
+
+		// First open — should succeed
+		App.Tap(OpenRightButtonId);
+		App.WaitForElement(StatusLabelId);
+		Assert.That(App.FindElement(StatusLabelId).GetText(), Is.EqualTo("Success"),
+			"First Open(RightItems) call should succeed.");
+
+		// Second open immediately (no close) — bug: throws ArgumentException on iOS/MacCatalyst
+		App.Tap(OpenRightButtonId);
+		Assert.That(App.FindElement(StatusLabelId).GetText(), Is.EqualTo("Success"),
+			"Second consecutive Open(RightItems) call should not throw an exception.");
+	}
+
+	[Test]
+	[Category(UITestCategories.SwipeView)]
+	public void SwipeViewOpenBottomDoesNotThrowOnSecondCall()
+	{
+		App.WaitForElement(OpenBottomButtonId);
+
+		// Close any open state first
+		App.Tap(CloseButtonId);
+
+		// First open BottomItems — SwipeDirection.Up uses a negative offset, same code path as RightItems bug
+		App.Tap(OpenBottomButtonId);
+		App.WaitForElement(StatusLabelId);
+		Assert.That(App.FindElement(StatusLabelId).GetText(), Is.EqualTo("Success"),
+			"First Open(BottomItems) call should succeed.");
+
+		// Second open — previously would throw ArgumentException due to Math.Abs sign corruption
+		App.Tap(OpenBottomButtonId);
+		Assert.That(App.FindElement(StatusLabelId).GetText(), Is.EqualTo("Success"),
+			"Second consecutive Open(BottomItems) call should not throw an exception.");
+	}
+
+	const string OpenRightButtonId = "OpenSwipeButton";
+	const string OpenBottomButtonId = "OpenBottomSwipeButton";
+	const string CloseButtonId = "CloseSwipeButton";
+	const string StatusLabelId = "StatusLabel";
+}
