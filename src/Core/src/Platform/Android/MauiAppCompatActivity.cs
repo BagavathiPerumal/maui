@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using Android.OS;
 using Android.Views;
 using AndroidX.Activity;
@@ -72,7 +71,7 @@ namespace Microsoft.Maui
 		// Must be called at every navigation state change so that Enabled reflects the current back
 		// stack before the predictive back drag preview starts (Android reads Enabled before commit).
 		// Call sites: Page.SendAppearing, Shell.SendNavigated, NavigationPage, Window, BlazorWebViewHandler.
-		public void UpdatePredictiveBackRegistration()
+		internal void UpdatePredictiveBackRegistration()
 		{
 			if (_mauiOnBackPressedCallback is null)
 				return;
