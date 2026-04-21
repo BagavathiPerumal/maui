@@ -3,7 +3,7 @@ using Microsoft.Maui.Graphics;
 
 namespace Maui.Controls.Sample.Issues
 {
-	[Issue(IssueTracker.Github, 12345, "Single tap event handler triggered for double mouse click on Windows")]
+	[Issue(IssueTracker.Github, 12345, "Single tap event handler triggered for double mouse click on Windows", isInternetRequired: true)]
 	public class IssueDoubleTapSingleTap : TestContentPage
 	{
 		private readonly Label _statusLabel;
