@@ -825,7 +825,12 @@ namespace Microsoft.Maui.Controls
 						//// the current navigation stack
 						//if (Owner._waitingCount == 0)
 						//	Owner.UpdateToolbar();
-
+#if ANDROID
+						// InsertPageBefore changes the stack depth without triggering SendNavigated,
+						// so refresh the predictive back callback here.
+						(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
+							?.UpdatePredictiveBackRegistration();
+#endif
 					}).FireAndForget();
 			}
 
@@ -969,7 +974,12 @@ namespace Microsoft.Maui.Controls
 						//// the current navigation stack
 						//if (Owner._waitingCount == 0)
 						//	Owner.UpdateToolbar();
-
+#if ANDROID
+						// RemovePage changes the stack depth without triggering SendNavigated,
+						// so refresh the predictive back callback here.
+						(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
+							?.UpdatePredictiveBackRegistration();
+#endif
 					}).FireAndForget();
 			}
 		}

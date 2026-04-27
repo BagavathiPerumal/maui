@@ -154,10 +154,16 @@ namespace Microsoft.Maui
 				if (_mauiOnBackPressedCallback is not null)
 					_mauiOnBackPressedCallback.Enabled = false;
 
-				base.OnBackPressed();
-
-				// Re-evaluate whether the callback should be enabled after propagation.
-				UpdatePredictiveBackRegistration();
+				try
+				{
+					base.OnBackPressed();
+				}
+				finally
+				{
+					// Re-evaluate whether the callback should be enabled after propagation.
+					// Using finally ensures the callback isn't permanently disabled if OnBackPressed throws.
+					UpdatePredictiveBackRegistration();
+				}
 			}
 		}
 	}

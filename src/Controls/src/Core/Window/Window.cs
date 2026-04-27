@@ -464,6 +464,12 @@ namespace Microsoft.Maui.Controls
 			ModalPopped?.Invoke(this, args);
 			Application?.NotifyOfWindowModalEvent(args);
 
+#if ANDROID
+			// Refresh the predictive back callback — programmatic PopModalAsync doesn't go through
+			// BackButtonClicked, so we update here to keep Enabled in sync with the modal stack.
+			RefreshPredictiveBackRegistration();
+#endif
+
 #if WINDOWS
 			this.Handler?.UpdateValue(nameof(IWindow.TitleBarDragRectangles));
 			this.Handler?.UpdateValue(nameof(ITitledElement.Title));
@@ -484,6 +490,12 @@ namespace Microsoft.Maui.Controls
 			var args = new ModalPushedEventArgs(modalPage);
 			ModalPushed?.Invoke(this, args);
 			Application?.NotifyOfWindowModalEvent(args);
+
+#if ANDROID
+			// Refresh the predictive back callback — programmatic PushModalAsync doesn't go through
+			// BackButtonClicked, so we update here to keep Enabled in sync with the modal stack.
+			RefreshPredictiveBackRegistration();
+#endif
 
 #if WINDOWS
 			this.Handler?.UpdateValue(nameof(IWindow.TitleBarDragRectangles));
