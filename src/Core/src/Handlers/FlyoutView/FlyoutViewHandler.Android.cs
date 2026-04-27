@@ -336,6 +336,9 @@ namespace Microsoft.Maui.Handlers
 		// Called from Window.OnPageChanging before page replacement so the DrawerLayout
 		// releases its system back callback synchronously, preventing it from shadowing
 		// the new page's callbacks on Android 16 (API 36+).
+		// NOTE: This method must only be called immediately before page replacement, which
+		// always triggers DisconnectHandler. The LockModeLockedClosed set below is transient
+		// and is reset by LayoutViews() if this handler is ever reconnected.
 		internal void ReleaseDrawerCallbackBeforePageChange()
 		{
 			if (!OperatingSystem.IsAndroidVersionAtLeast(36))

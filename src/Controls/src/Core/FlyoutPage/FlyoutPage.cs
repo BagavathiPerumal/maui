@@ -5,6 +5,9 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Maui.Controls.Internals;
+#if ANDROID
+using Microsoft.Maui.Handlers;
+#endif
 
 using Microsoft.Maui.Devices;
 using Microsoft.Maui.Graphics;
@@ -406,7 +409,7 @@ namespace Microsoft.Maui.Controls
 #if ANDROID
 		internal void ReleaseDrawerCallbackBeforePageChange()
 		{
-			if (Handler is Microsoft.Maui.Handlers.FlyoutViewHandler handler)
+			if (Handler is FlyoutViewHandler handler)
 				handler.ReleaseDrawerCallbackBeforePageChange();
 		}
 #endif

@@ -10,52 +10,12 @@ public class Issue33508 : ContentPage
 	{
 		_state = new Issue33508State();
 		_navigationService = new Issue33508NavigationService(_state);
-		Content = CreateStartPageContent();
 	}
 
 	protected override void OnAppearing()
 	{
 		base.OnAppearing();
 		_navigationService.NavigateToStartPage();
-	}
-
-	VerticalStackLayout CreateStartPageContent()
-	{
-		var lastNavigationSourceLabel = new Label
-		{
-			AutomationId = "Issue33508LastNavigationSourceLabel"
-		};
-
-		_state.Changed += (_, _) =>
-			lastNavigationSourceLabel.Text = $"Last navigation source: {_state.LastNavigationSource}";
-
-		lastNavigationSourceLabel.Text = $"Last navigation source: {_state.LastNavigationSource}";
-
-		return new VerticalStackLayout
-		{
-			Padding = 24,
-			Spacing = 16,
-			Children =
-			{
-				new Label
-				{
-					Text = "StartPage",
-					AutomationId = "Issue33508StartPageLabel"
-				},
-				new Label
-				{
-					Text = "Navigate to DetailPage1, then use Android back to trigger FlyoutPage.OnBackButtonPressed.",
-					AutomationId = "Issue33508StartPageInstructionLabel"
-				},
-				lastNavigationSourceLabel,
-				new Button
-				{
-					Text = "Go to DetailPage1",
-					AutomationId = "Issue33508NavigateToDetailButton",
-					Command = new Command(() => _navigationService.NavigateToDetailPage())
-				}
-			}
-		};
 	}
 }
 
@@ -209,7 +169,8 @@ sealed class Issue33508DetailPage : ContentPage
 			AutomationId = "Issue33508BackHandledCountLabel"
 		};
 
-		_state.Changed += (_, _) => RefreshBackHandledCount();
+		_state.Changed += OnStateChanged;
+		Disappearing += (_, _) => _state.Changed -= OnStateChanged;
 
 		Content = new VerticalStackLayout
 		{
@@ -251,6 +212,8 @@ sealed class Issue33508DetailPage : ContentPage
 
 		RefreshBackHandledCount();
 	}
+
+	void OnStateChanged(object sender, EventArgs e) => RefreshBackHandledCount();
 
 	void RefreshBackHandledCount()
 	{
