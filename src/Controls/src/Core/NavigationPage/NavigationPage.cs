@@ -5,11 +5,9 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Maui.ApplicationModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls.Internals;
 using Microsoft.Maui.Graphics;
-using Microsoft.Maui.Platform;
 
 namespace Microsoft.Maui.Controls
 {
@@ -550,11 +548,8 @@ namespace Microsoft.Maui.Controls
 			if (newValue is Page newPage && ((NavigationPage)bindable).HasAppeared)
 				newPage.SendAppearing();
 
-#if ANDROID
 			// Refresh Enabled on the predictive back callback when the active page changes.
-			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
-				?.UpdatePredictiveBackRegistration();
-#endif
+			(((NavigationPage)bindable).Window as Window)?.NotifyNavigationStateChanged();
 		}
 
 		internal IToolbar FindMyToolbar()
@@ -825,12 +820,9 @@ namespace Microsoft.Maui.Controls
 						//// the current navigation stack
 						//if (Owner._waitingCount == 0)
 						//	Owner.UpdateToolbar();
-#if ANDROID
 						// InsertPageBefore changes the stack depth without triggering SendNavigated,
 						// so refresh the predictive back callback here.
-						(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
-							?.UpdatePredictiveBackRegistration();
-#endif
+						(Owner.Window as Window)?.NotifyNavigationStateChanged();
 					}).FireAndForget();
 			}
 
@@ -974,12 +966,9 @@ namespace Microsoft.Maui.Controls
 						//// the current navigation stack
 						//if (Owner._waitingCount == 0)
 						//	Owner.UpdateToolbar();
-#if ANDROID
 						// RemovePage changes the stack depth without triggering SendNavigated,
 						// so refresh the predictive back callback here.
-						(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
-							?.UpdatePredictiveBackRegistration();
-#endif
+						(Owner.Window as Window)?.NotifyNavigationStateChanged();
 					}).FireAndForget();
 			}
 		}

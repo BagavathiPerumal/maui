@@ -297,12 +297,9 @@ namespace Microsoft.Maui.Controls
 		{
 			var flyoutPage = (FlyoutPage)sender;
 			flyoutPage.IsPresentedChanged?.Invoke(sender, EventArgs.Empty);
-#if ANDROID
 			// Refresh the predictive back callback when the flyout opens or closes so the
 			// back-to-home animation is suppressed only while the flyout is actually open.
-			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
-				?.UpdatePredictiveBackRegistration();
-#endif
+			(flyoutPage.Window as Window)?.NotifyNavigationStateChanged();
 		}
 
 		static void OnIsPresentedPropertyChanging(BindableObject sender, object oldValue, object newValue)

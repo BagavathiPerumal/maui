@@ -12,7 +12,6 @@ using Microsoft.Maui;
 using Microsoft.Maui.Controls.Internals;
 using Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific;
 using Microsoft.Maui.Graphics;
-using Microsoft.Maui.Platform;
 
 namespace Microsoft.Maui.Controls
 {
@@ -636,11 +635,8 @@ namespace Microsoft.Maui.Controls
 			OnAppearing();
 			Appearing?.Invoke(this, EventArgs.Empty);
 
-#if ANDROID
 			// Refresh Enabled on the predictive back callback so the animation preview reflects the new state.
-			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
-				?.UpdatePredictiveBackRegistration();
-#endif
+			(this.Window as Window)?.NotifyNavigationStateChanged();
 
 			var pageContainer = this as IPageContainer<Page>;
 			pageContainer?.CurrentPage?.SendAppearing();

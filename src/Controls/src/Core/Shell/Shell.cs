@@ -17,7 +17,6 @@ using Microsoft.Maui.Controls.Internals;
 using Microsoft.Maui.Controls.Xaml.Diagnostics;
 using Microsoft.Maui.Devices;
 using Microsoft.Maui.Graphics;
-using Microsoft.Maui.Platform;
 
 namespace Microsoft.Maui.Controls
 {
@@ -1704,11 +1703,7 @@ namespace Microsoft.Maui.Controls
 				try
 				{
 					await currentContent.Navigation.PopAsync();
-
-#if ANDROID
-					(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
-						?.UpdatePredictiveBackRegistration();
-#endif
+					(this.Window as Window)?.NotifyNavigationStateChanged();
 				}
 				catch (Exception exc)
 				{
@@ -1762,11 +1757,7 @@ namespace Microsoft.Maui.Controls
 				CurrentPage.PropertyChanged += OnCurrentPagePropertyChanged;
 
 			CurrentItem?.Handler?.UpdateValue(Shell.TabBarIsVisibleProperty.PropertyName);
-
-#if ANDROID
-			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
-				?.UpdatePredictiveBackRegistration();
-#endif
+			(this.Window as Window)?.NotifyNavigationStateChanged();
 		}
 
 		void OnCurrentPageLoaded(object sender, EventArgs e)
@@ -2225,11 +2216,8 @@ namespace Microsoft.Maui.Controls
 			if (propertyName == Shell.FlyoutIsPresentedProperty.PropertyName)
 			{
 				Handler?.UpdateValue(nameof(IFlyoutView.IsPresented));
-#if ANDROID
-			// Refresh Enabled on the predictive back callback; flyout state affects whether back is consumed here.
-			(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as Microsoft.Maui.MauiAppCompatActivity)
-				?.UpdatePredictiveBackRegistration();
-#endif
+				// Refresh Enabled on the predictive back callback; flyout state affects whether back is consumed here.
+				(this.Window as Window)?.NotifyNavigationStateChanged();
 			}
 		}
 
