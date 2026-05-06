@@ -10,8 +10,8 @@ public partial class Maui18055 : ContentPage
 {
 	public Maui18055() => InitializeComponent();
 
-	public int baseForVirtualClicked;
-	protected virtual void HandleVirtualClicked(object sender, EventArgs e) => baseForVirtualClicked++;
+	public int BaseForVirtualClicked;
+	protected virtual void HandleVirtualClicked(object sender, EventArgs e) => BaseForVirtualClicked++;
 
 	[Collection("Issue")]
 	public class Tests
@@ -25,16 +25,16 @@ public partial class Maui18055 : ContentPage
 		internal void VirtualHandlerInDataTemplateCallsOverride(XamlInflator inflator)
 		{
 			var page = new SubMaui18055(inflator);
-			Assert.Equal(0, page.baseForVirtualClicked);
-			Assert.Equal(0, page.overrideClicked);
+			Assert.Equal(0, page.BaseForVirtualClicked);
+			Assert.Equal(0, page.OverrideClicked);
 
 			var template = (Microsoft.Maui.Controls.DataTemplate)page.Resources["virtualHandlerTemplate"];
 			var element = (ElementWithEvent)template.CreateContent();
 			element.SendClicked();
 
 			// Override must be called; base must NOT be called.
-			Assert.Equal(1, page.overrideClicked);
-			Assert.Equal(0, page.baseForVirtualClicked);
+			Assert.Equal(1, page.OverrideClicked);
+			Assert.Equal(0, page.BaseForVirtualClicked);
 		}
 	}
 }
@@ -43,6 +43,6 @@ class SubMaui18055 : Maui18055
 {
 	public SubMaui18055(XamlInflator inflator) : base(inflator) { }
 
-	public int overrideClicked;
-	protected override void HandleVirtualClicked(object sender, EventArgs e) => overrideClicked++;
+	public int OverrideClicked;
+	protected override void HandleVirtualClicked(object sender, EventArgs e) => OverrideClicked++;
 }
