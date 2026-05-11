@@ -311,7 +311,9 @@ namespace Microsoft.Maui.Controls
 			// matching prefix params. This prevents stale QueryAttributesProperty stored from
 			// a prior cycle from propagating to pages that are not the navigation target.
 			if (!isLastItem && filteredQuery.Count == 0)
+			{
 				return;
+			}
 
 			if (baseShellItem is ShellContent)
 			{
