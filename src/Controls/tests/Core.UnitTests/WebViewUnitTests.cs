@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using Microsoft.Maui.Controls.PlatformConfiguration;
 using Microsoft.Maui.Controls.PlatformConfiguration.AndroidSpecific;
 using Microsoft.Maui.Controls.PlatformConfiguration.WindowsSpecific;
@@ -172,6 +173,30 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 			defaultWebView.Source = "http://xamarin.com";
 
 			Assert.NotNull(defaultWebView.Cookies);
+		}
+
+		// Regression test for https://github.com/dotnet/maui/issues/35483
+		// A shared WebViewSource must not keep WebViews alive after their handler is disconnected.
+		[Fact]
+		public void SharedSourceDoesNotPreventWebViewGC()
+		{
+			var sharedSource = new HtmlWebViewSource { Html = "<html/>" };
+			var weakRef = CreateWebViewWithSharedSource(sharedSource);
+
+			GC.Collect();
+			GC.WaitForPendingFinalizers();
+			GC.Collect();
+
+			Assert.False(weakRef.IsAlive, "WebView should be GC-eligible after handler disconnect even when a shared WebViewSource is still alive.");
+		}
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		static WeakReference CreateWebViewWithSharedSource(HtmlWebViewSource source)
+		{
+			var webView = new WebView { Source = source };
+			webView.Handler = new HandlerStub();
+			webView.Handler = null; // simulate page pop / handler disconnect
+			return new WeakReference(webView);
 		}
 	}
 }
