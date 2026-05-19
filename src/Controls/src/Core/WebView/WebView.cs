@@ -28,9 +28,8 @@ namespace Microsoft.Maui.Controls
 			propertyChanging: (bindable, oldvalue, newvalue) =>
 			{
 				var source = oldvalue as WebViewSource;
-				var webview = (WebView)bindable;
 				if (source != null)
-					source.SourceChanged -= webview.OnSourceChanged;
+					source.SourceChanged -= ((WebView)bindable).OnSourceChanged;
 			}, propertyChanged: (bindable, oldvalue, newvalue) =>
 			{
 				var source = newvalue as WebViewSource;
