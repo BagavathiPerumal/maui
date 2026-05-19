@@ -29,19 +29,15 @@ namespace Microsoft.Maui.Controls
 			{
 				var source = oldvalue as WebViewSource;
 				var webview = (WebView)bindable;
-				if (source != null && webview._subscribedToSourceChanged)
-				{
+				if (source != null)
 					source.SourceChanged -= webview.OnSourceChanged;
-					webview._subscribedToSourceChanged = false;
-				}
 			}, propertyChanged: (bindable, oldvalue, newvalue) =>
 			{
 				var source = newvalue as WebViewSource;
 				var webview = (WebView)bindable;
-				if (source != null && !webview._subscribedToSourceChanged)
+				if (source != null)
 				{
 					source.SourceChanged += webview.OnSourceChanged;
-					webview._subscribedToSourceChanged = true;
 					SetInheritedBindingContext(source, webview.BindingContext);
 				}
 			});
@@ -66,7 +62,6 @@ namespace Microsoft.Maui.Controls
 
 		bool _canGoBack;
 		bool _canGoForward;
-		bool _subscribedToSourceChanged;
 
 		/// <summary>
 		/// Creates a new <see cref="WebView" /> element with default values.
@@ -270,34 +265,6 @@ namespace Microsoft.Maui.Controls
 		protected void OnSourceChanged(object sender, EventArgs e)
 		{
 			OnPropertyChanged(SourceProperty.PropertyName);
-		}
-
-		/// <inheritdoc/>
-		private protected override void OnHandlerChangingCore(HandlerChangingEventArgs args)
-		{
-			base.OnHandlerChangingCore(args);
-
-			if (args.NewHandler is null && _subscribedToSourceChanged)
-			{
-				// Handler is being removed (e.g. page popped). Unsubscribe to break the retention
-				// chain: WebViewSource.SourceChanged → delegate → WebView → page graph.
-				var source = Source;
-				if (source != null)
-				{
-					source.SourceChanged -= OnSourceChanged;
-					_subscribedToSourceChanged = false;
-				}
-			}
-			else if (args.OldHandler is null && args.NewHandler is not null && !_subscribedToSourceChanged)
-			{
-				// Handler is being connected. Re-subscribe if Source is already set.
-				var source = Source;
-				if (source != null)
-				{
-					source.SourceChanged += OnSourceChanged;
-					_subscribedToSourceChanged = true;
-				}
-			}
 		}
 
 		event EventHandler<EvalRequested> _evalRequested;
