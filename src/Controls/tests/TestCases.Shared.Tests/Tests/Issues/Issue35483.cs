@@ -38,13 +38,18 @@ public class Issue35483 : _IssuesUITest
 		App.WaitForElement("RunButton");
 		App.Tap("RunButton");
 
-		// The test pushes 5 pages and pops them, then forces GC — give it time to complete.
-		App.RetryAssert(() =>
+		// The test pushes 5 pages then pops them. During that time ResultLabel is temporarily
+		// hidden by the navigation stack on iOS (XCUITest only queries the topmost page).
+		// WaitForTextToBePresentInElement uses FindElements (plural) which returns empty list
+		// instead of throwing, so it safely polls through the navigation phase.
+		bool collected = App.WaitForTextToBePresentInElement("ResultLabel", "Collected: 0/5",
+			timeout: TimeSpan.FromSeconds(60));
+
+		if (!collected)
 		{
-			var text = App.FindElement("ResultLabel").GetText();
-			Assert.That(text, Does.StartWith("Collected").Or.StartWith("Leaked"),
-				$"Waiting for GC result; current label: '{text}'");
-		}, timeout: TimeSpan.FromSeconds(30));
+			// GC did not confirm all collected — check if a "Leaked" result came through
+			App.WaitForTextToBePresentInElement("ResultLabel", "Leaked", timeout: TimeSpan.FromSeconds(10));
+		}
 
 		var result = App.FindElement("ResultLabel").GetText();
 		Assert.That(result, Is.EqualTo("Collected: 0/5"),

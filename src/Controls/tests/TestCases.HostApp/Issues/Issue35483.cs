@@ -62,6 +62,7 @@ public class Issue35483MainPage : ContentPage
 		}
 
 		// Pop all pages to release them from the navigation stack.
+		// Each pop disconnects the page's WebView handler → OnHandlerChangingCore fires.
 		for (int i = 0; i < PageCount; i++)
 		{
 			await Navigation.PopAsync(animated: false);
@@ -70,15 +71,20 @@ public class Issue35483MainPage : ContentPage
 
 		_resultLabel.Text = "Running GC...";
 
-		// Multiple GC cycles to give the runtime every opportunity to collect.
-		for (int i = 0; i < 3; i++)
+		// Run GC on a background thread so the UI thread stays responsive.
+		// This is critical on iOS where GC.WaitForPendingFinalizers() can block long
+		// enough for Appium to time out reading the label from the main thread.
+		await Task.Run(() =>
 		{
-			GC.Collect();
-			GC.WaitForPendingFinalizers();
-			GC.Collect();
-			GC.WaitForPendingFinalizers();
-			await Task.Delay(100);
-		}
+			for (int i = 0; i < 3; i++)
+			{
+				GC.Collect();
+				GC.WaitForPendingFinalizers();
+				GC.Collect();
+				GC.WaitForPendingFinalizers();
+				System.Threading.Thread.Sleep(100);
+			}
+		});
 
 		int aliveWebViews = 0;
 		foreach (var wr in _webViewRefs)
@@ -93,7 +99,7 @@ public class Issue35483MainPage : ContentPage
 			: string.Format("Leaked: {0}/{1}", aliveWebViews, PageCount);
 	}
 
-	// Separate method ensures local WebView variable is out of scope before GC runs.
+	// Separate method ensures the local WebView variable goes out of scope before GC runs.
 	ContentPage CreateWebViewPage()
 	{
 		var webView = new WebView { Source = s_sharedSource };
