@@ -10,26 +10,6 @@ public class Issue35483 : _IssuesUITest
 
 	public override string Issue => "WebView leaks when using a shared WebViewSource";
 
-#if MACCATALYST
-	// On Mac, TryToResetTestState is a no-op in the base class (relies on startup env var).
-	// If startup nav failed (app shows gallery), fall back to search-bar navigation.
-	protected override void TryToResetTestState()
-	{
-		try
-		{
-			App.WaitForElement("RunButton", timeout: TimeSpan.FromSeconds(5));
-		}
-		catch
-		{
-			// Startup navigation didn't land on the test page; navigate via gallery.
-			App.WaitForElement("GoToTestButton");
-			App.EnterText("SearchBar", Issue);
-			App.WaitForElement("GoToTestButton");
-			App.Tap("GoToTestButton");
-		}
-	}
-#endif
-
 	[Test]
 	[Category(UITestCategories.WebView)]
 	public void WebViewDoesNotLeakWithSharedSource()
