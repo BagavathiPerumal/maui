@@ -60,8 +60,7 @@ namespace Microsoft.Maui.Controls
 					var label = ((Label)bindable);
 
 					formattedString.SpansCollectionChanged -= label.Span_CollectionChanged;
-					formattedString.PropertyChanged -= label.OnFormattedTextChanged;
-					formattedString.PropertyChanging -= label.OnFormattedTextChanging;
+					label.UnsubscribeFormattedStringPropertyEvents(formattedString);
 					formattedString.Parent = null;
 					label.RemoveSpans(formattedString.Spans);
 				}
@@ -74,8 +73,7 @@ namespace Microsoft.Maui.Controls
 				{
 					var formattedString = (FormattedString)newvalue;
 					formattedString.Parent = label;
-					formattedString.PropertyChanging += label.OnFormattedTextChanging;
-					formattedString.PropertyChanged += label.OnFormattedTextChanged;
+					label.SubscribeFormattedStringPropertyEvents(formattedString);
 					formattedString.SpansCollectionChanged += label.Span_CollectionChanged;
 					label.SetupSpans(formattedString.Spans);
 				}
@@ -123,6 +121,47 @@ namespace Microsoft.Maui.Controls
 		public Label()
 		{
 			_platformConfigurationRegistry = new Lazy<PlatformConfigurationRegistry<Label>>(() => new PlatformConfigurationRegistry<Label>(this));
+		}
+
+		// Weak event subscription handlers for FormattedString PropertyChanged/PropertyChanging.
+		// These use a WeakReference<Label> captured in the delegate so the FormattedString's
+		// event invocation list does not prevent Label from being garbage collected.
+		PropertyChangingEventHandler _weakPropertyChangingHandler;
+		PropertyChangedEventHandler _weakPropertyChangedHandler;
+
+		void SubscribeFormattedStringPropertyEvents(FormattedString formattedString)
+		{
+			var weakLabel = new WeakReference<Label>(this);
+
+			_weakPropertyChangingHandler = (sender, e) =>
+			{
+				if (weakLabel.TryGetTarget(out var label))
+					label.OnFormattedTextChanging(sender, e);
+			};
+
+			_weakPropertyChangedHandler = (sender, e) =>
+			{
+				if (weakLabel.TryGetTarget(out var label))
+					label.OnFormattedTextChanged(sender, e);
+			};
+
+			formattedString.PropertyChanging += _weakPropertyChangingHandler;
+			formattedString.PropertyChanged += _weakPropertyChangedHandler;
+		}
+
+		void UnsubscribeFormattedStringPropertyEvents(FormattedString formattedString)
+		{
+			if (_weakPropertyChangingHandler != null)
+			{
+				formattedString.PropertyChanging -= _weakPropertyChangingHandler;
+				_weakPropertyChangingHandler = null;
+			}
+
+			if (_weakPropertyChangedHandler != null)
+			{
+				formattedString.PropertyChanged -= _weakPropertyChangedHandler;
+				_weakPropertyChangedHandler = null;
+			}
 		}
 
 		protected override void OnBindingContextChanged()
