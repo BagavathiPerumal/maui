@@ -123,45 +123,37 @@ namespace Microsoft.Maui.Controls
 			_platformConfigurationRegistry = new Lazy<PlatformConfigurationRegistry<Label>>(() => new PlatformConfigurationRegistry<Label>(this));
 		}
 
-		// Weak event subscription handlers for FormattedString PropertyChanged/PropertyChanging.
-		// These use a WeakReference<Label> captured in the delegate so the FormattedString's
-		// event invocation list does not prevent Label from being garbage collected.
-		PropertyChangingEventHandler _weakPropertyChangingHandler;
-		PropertyChangedEventHandler _weakPropertyChangedHandler;
+		// Proxy-based weak subscriptions for FormattedString PropertyChanging/PropertyChanged.
+		// Proxies hold WeakReferences to the handler delegates (which are stored as fields below),
+		// so when the Label is GC'd the handler fields become unreachable and the proxies
+		// auto-unsubscribe on the next event — preventing zombie delegate accumulation.
+		PropertyChangingEventHandler _onFormattedTextChanging;
+		PropertyChangedEventHandler _onFormattedTextChanged;
+		WeakNotifyPropertyChangingProxy _formattedStringPropertyChangingProxy;
+		WeakNotifyPropertyChangedProxy _formattedStringPropertyChangedProxy;
+
+		~Label()
+		{
+			_formattedStringPropertyChangingProxy?.Unsubscribe();
+			_formattedStringPropertyChangedProxy?.Unsubscribe();
+		}
 
 		void SubscribeFormattedStringPropertyEvents(FormattedString formattedString)
 		{
-			var weakLabel = new WeakReference<Label>(this);
+			_onFormattedTextChanging ??= OnFormattedTextChanging;
+			_onFormattedTextChanged ??= OnFormattedTextChanged;
 
-			_weakPropertyChangingHandler = (sender, e) =>
-			{
-				if (weakLabel.TryGetTarget(out var label))
-					label.OnFormattedTextChanging(sender, e);
-			};
+			_formattedStringPropertyChangingProxy ??= new();
+			_formattedStringPropertyChangingProxy.Subscribe(formattedString, _onFormattedTextChanging);
 
-			_weakPropertyChangedHandler = (sender, e) =>
-			{
-				if (weakLabel.TryGetTarget(out var label))
-					label.OnFormattedTextChanged(sender, e);
-			};
-
-			formattedString.PropertyChanging += _weakPropertyChangingHandler;
-			formattedString.PropertyChanged += _weakPropertyChangedHandler;
+			_formattedStringPropertyChangedProxy ??= new();
+			_formattedStringPropertyChangedProxy.Subscribe(formattedString, _onFormattedTextChanged);
 		}
 
 		void UnsubscribeFormattedStringPropertyEvents(FormattedString formattedString)
 		{
-			if (_weakPropertyChangingHandler != null)
-			{
-				formattedString.PropertyChanging -= _weakPropertyChangingHandler;
-				_weakPropertyChangingHandler = null;
-			}
-
-			if (_weakPropertyChangedHandler != null)
-			{
-				formattedString.PropertyChanged -= _weakPropertyChangedHandler;
-				_weakPropertyChangedHandler = null;
-			}
+			_formattedStringPropertyChangingProxy?.Unsubscribe();
+			_formattedStringPropertyChangedProxy?.Unsubscribe();
 		}
 
 		protected override void OnBindingContextChanged()

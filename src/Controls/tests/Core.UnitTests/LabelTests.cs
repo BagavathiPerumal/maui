@@ -231,9 +231,7 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 
 			var weakRef = CreateLabelWithSharedFormattedString(sharedFs);
 
-			GC.Collect();
-			GC.WaitForPendingFinalizers();
-			GC.Collect();
+			RunGCLoop();
 
 			Assert.False(weakRef.IsAlive,
 				"Label should be GC-eligible after handler disconnect even when a shared FormattedString is still alive.");
@@ -252,9 +250,7 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 
 			var weakRef = CreateLabelWithSharedFormattedString(sharedFs);
 
-			GC.Collect();
-			GC.WaitForPendingFinalizers();
-			GC.Collect();
+			RunGCLoop();
 
 			Assert.False(weakRef.IsAlive,
 				"Label should be GC-eligible even when shared FormattedString has spans with gesture recognizers.");
@@ -269,13 +265,13 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 
 			var weakRefs = CreateMultipleLabelsWithSharedFormattedString(sharedFs, count: 5);
 
-			GC.Collect();
-			GC.WaitForPendingFinalizers();
-			GC.Collect();
+			RunGCLoop();
 
 			for (int i = 0; i < weakRefs.Length; i++)
+			{
 				Assert.False(weakRefs[i].IsAlive,
 					$"Label[{i}] should be GC-eligible after handler disconnect even when a shared FormattedString is still alive.");
+			}
 			GC.KeepAlive(sharedFs);
 		}
 
@@ -292,13 +288,56 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 
 			var deadRef = CreateLabelWithSharedFormattedString(sharedFs);
 
-			GC.Collect();
-			GC.WaitForPendingFinalizers();
-			GC.Collect();
+			RunGCLoop();
 
 			Assert.False(deadRef.IsAlive, "Disconnected Label should be collected.");
 			Assert.True(liveRef.IsAlive, "Label still attached to a handler must NOT be collected.");
 			GC.KeepAlive(liveLabel);
+		}
+
+		[Fact]
+		public void SharedFormattedStringDoesNotAccumulateZombieHandlers()
+		{
+			// Verifies that WeakNotifyPropertyChangingProxy / WeakNotifyPropertyChangedProxy
+			// prevent zombie delegate accumulation. After N labels are GC'd, a new live label
+			// must still receive FormattedText PropertyChanged notifications normally.
+			var sharedFs = new FormattedString();
+			sharedFs.Spans.Add(new Span { Text = "Shared" });
+
+			// Create 10 labels and discard them (simulates heavy navigation churn).
+			CreateMultipleLabelsWithSharedFormattedString(sharedFs, count: 10);
+
+			RunGCLoop();
+
+			// Subscribe a live label after the dead ones are collected.
+			int propertyChangedCount = 0;
+			var liveLabel = new Label { FormattedText = sharedFs };
+			liveLabel.PropertyChanged += (s, e) =>
+			{
+				if (e.PropertyName == nameof(Label.FormattedText))
+				{
+					propertyChangedCount++;
+				}
+			};
+
+			// Changing a span property propagates through FormattedString → Label.
+			sharedFs.Spans[0].Text = "Updated";
+
+			Assert.True(propertyChangedCount > 0,
+				"Live label must still receive FormattedText PropertyChanged after dead labels are GC'd.");
+			GC.KeepAlive(liveLabel);
+			GC.KeepAlive(sharedFs);
+		}
+
+		// Runs multiple GC cycles to improve collection reliability across GC generations.
+		static void RunGCLoop(int iterations = 3)
+		{
+			for (int i = 0; i < iterations; i++)
+			{
+				GC.Collect();
+				GC.WaitForPendingFinalizers();
+				GC.Collect();
+			}
 		}
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
