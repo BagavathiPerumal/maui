@@ -57,6 +57,13 @@ namespace Microsoft.Maui.Platform
 					RefreshViewWebViewScrollCapture.InjectObserver(this);
 				}
 			}
+			else
+			{
+				// Not inside a RefreshView — remove the bridge that was pre-registered
+				// in the constructor so it is not exposed to untrusted page content
+				// loaded in standalone WebViews.
+				RefreshViewWebViewScrollCapture.Detach(this);
+			}
 		}
 
 		protected override void OnDetachedFromWindow()
