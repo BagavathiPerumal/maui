@@ -242,6 +242,38 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			_noNeedForScroll = true;
 			_gotoPosition = -1;
 
+			// When the current item is replaced in the collection, keep the carousel position
+			// at the replaced index and update CurrentItem to the new item there.
+			// Without this, removingCurrentElement=true causes the KeepItemsInView scroll mode
+			// to incorrectly reset carouselPosition to 0.
+			if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace
+				&& removingCurrentElement)
+			{
+				var replacedPosition = e.OldStartingIndex;
+				var isLastItem = e.NewStartingIndex == count - 1;
+
+				var dispatcher = Carousel.Handler?.MauiContext?.GetDispatcher();
+				if (dispatcher is null) return;
+
+				dispatcher.Dispatch(() =>
+				{
+					if (_scrollToCounter == savedScrollToCounter
+						&& replacedPosition < (ItemsViewAdapter?.ItemsSource?.Count ?? 0))
+					{
+						SetCurrentItem(replacedPosition);
+						UpdatePosition(replacedPosition);
+					}
+
+					if (isLastItem)
+					{
+						UpdateItemDecoration();
+					}
+
+					UpdateVisualStates();
+				});
+				return;
+			}
+
 			if (removingCurrentElement)
 			{
 				if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
