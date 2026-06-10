@@ -339,9 +339,13 @@ namespace Microsoft.Maui.Controls.Handlers.Items2
 			// would incorrectly reset the carousel to the first item. Preserve the pre-update position
 			// so the carousel stays on the replaced item's index.
 			if (e.Action == NotifyCollectionChangedAction.Replace)
+			{
 				targetPosition = _positionAfterUpdate;
+			}
 			else
+			{
 				targetPosition = GetTargetPosition();
+			}
 
 			_positionAfterUpdate = -1;
 
