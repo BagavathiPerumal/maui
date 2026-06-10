@@ -26,9 +26,33 @@ namespace Microsoft.Maui.Platform
 			CoreWebView2.PostWebMessageAsString(rawMessage);
 		}
 
-		public async void RunAfterInitialize(Action action)
+		public void RunAfterInitialize(Action action)
 		{
-			var isWebViewInitialized = await WebViewReadyTask!;
+			ArgumentNullException.ThrowIfNull(action);
+
+			var webViewReadyTask = WebViewReadyTask;
+			if (webViewReadyTask is null)
+			{
+				action();
+				return;
+			}
+
+			if (webViewReadyTask.IsCompletedSuccessfully)
+			{
+				if (webViewReadyTask.Result)
+				{
+					action();
+				}
+
+				return;
+			}
+
+			_ = RunAfterInitializeAsync(webViewReadyTask, action);
+		}
+
+		private static async Task RunAfterInitializeAsync(Task<bool> webViewReadyTask, Action action)
+		{
+			var isWebViewInitialized = await webViewReadyTask;
 
 			if (isWebViewInitialized)
 			{

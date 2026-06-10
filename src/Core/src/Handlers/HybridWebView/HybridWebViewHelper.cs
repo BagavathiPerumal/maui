@@ -89,16 +89,25 @@ internal static partial class HybridWebViewHelper
 		var innerRequest = new EvaluateJavaScriptAsyncRequest(wrappedScript);
 
 		// Execute via platform evaluator
-		handler.PlatformView.EvaluateJavaScript(innerRequest);
+#if WINDOWS
+		if (handler.PlatformView is Microsoft.Maui.Platform.MauiHybridWebView windowsWebView)
+		{
+			windowsWebView.RunAfterInitialize(() => handler.PlatformView.EvaluateJavaScript(innerRequest));
+		}
+		else
+#endif
+		{
+			handler.PlatformView.EvaluateJavaScript(innerRequest);
+		}
 
 		var result = await innerRequest.Task;
 
 		if (result == null)
 			return null;
 
-		// Android's WebView automatically JSON-encodes the return value, so we need to unwrap it
+		// Android and Windows WebViews automatically JSON-encode the return value, so we need to unwrap it
 		// Check if the result is a JSON-encoded string (starts and ends with quotes)
-		if (OperatingSystem.IsAndroid())
+		if (OperatingSystem.IsAndroid() || OperatingSystem.IsWindows())
 		{
 			// Deserialize once to unwrap the JSON string
 			result = JsonSerializer.Deserialize<string>(result);
@@ -158,7 +167,16 @@ internal static partial class HybridWebViewHelper
 
 		var innerRequest = new EvaluateJavaScriptAsyncRequest(js);
 
-		handler.PlatformView.EvaluateJavaScript(innerRequest);
+#if WINDOWS
+		if (handler.PlatformView is Microsoft.Maui.Platform.MauiHybridWebView windowsWebView)
+		{
+			windowsWebView.RunAfterInitialize(() => handler.PlatformView.EvaluateJavaScript(innerRequest));
+		}
+		else
+#endif
+		{
+			handler.PlatformView.EvaluateJavaScript(innerRequest);
+		}
 
 		// Don't await innerRequest.Task because __InvokeJavaScript is async and returns a Promise,
 		// which iOS can't convert to a string. Instead, we wait for the callback message from JavaScript.
