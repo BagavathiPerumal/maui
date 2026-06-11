@@ -253,7 +253,10 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 				var isLastItem = e.NewStartingIndex == count - 1;
 
 				var dispatcher = Carousel.Handler?.MauiContext?.GetDispatcher();
-				if (dispatcher is null) return;
+				if (dispatcher is null)
+				{
+					return;
+				}
 
 				dispatcher.Dispatch(() =>
 				{

@@ -415,7 +415,9 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			// up a spurious ViewChanged event emitted by WinUI's container rebind, which can
 			// produce an incorrect AdjustToCenterAsync calculation that snaps to the wrong item.
 			if (_isHandlingReplace)
+			{
 				return;
+			}
 
 			var currentItemPosition = GetItemPositionInCarousel(ItemsView.CurrentItem);
 
@@ -609,10 +611,14 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 						Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
 						{
 							if (ListViewBase is null || !IsValidPosition(capturedPosition))
+							{
 								return;
+							}
 							var item = GetItem(capturedPosition);
 							if (item is not null)
+							{
 								ListViewBase.ScrollIntoView(item, ScrollIntoViewAlignment.Leading);
+							}
 						});
 				}
 				return;
