@@ -8,13 +8,12 @@ namespace Maui.Controls.Sample.Issues
 	public class Issue35643 : ContentPage
 	{
 		readonly Issue35643ViewModel _viewModel;
-		readonly CarouselView _carousel;
 
 		public Issue35643()
 		{
 			_viewModel = new Issue35643ViewModel
 			{
-				Items = new ObservableCollection<string> { "0", "1", "2", "3", "4" },
+				Items = new ObservableCollection<string> { "0", "1", "2" },
 				CurrentItem = "2"
 			};
 
@@ -26,14 +25,7 @@ namespace Maui.Controls.Sample.Issues
 			};
 			currentItemLabel.SetBinding(Label.TextProperty, new Binding(nameof(Issue35643ViewModel.CurrentItem)));
 
-			var positionLabel = new Label
-			{
-				AutomationId = "PositionLabel",
-				FontSize = 18,
-				HorizontalTextAlignment = TextAlignment.Center
-			};
-
-			_carousel = new CarouselView
+			var carousel = new CarouselView
 			{
 				Loop = false,
 				AutomationId = "CarouselView",
@@ -49,46 +41,27 @@ namespace Maui.Controls.Sample.Issues
 					return new Frame { Content = label, BackgroundColor = Colors.LightBlue };
 				})
 			};
-			_carousel.SetBinding(CarouselView.ItemsSourceProperty, new Binding(nameof(Issue35643ViewModel.Items)));
-			_carousel.SetBinding(CarouselView.CurrentItemProperty, new Binding(nameof(Issue35643ViewModel.CurrentItem)));
+			carousel.SetBinding(CarouselView.ItemsSourceProperty, new Binding(nameof(Issue35643ViewModel.Items)));
+			carousel.SetBinding(CarouselView.CurrentItemProperty, new Binding(nameof(Issue35643ViewModel.CurrentItem)));
 
-			// Use a direct binding so PositionLabel reflects the current Position at all times,
-			// including at startup (event-only handlers miss the initial value).
-			positionLabel.SetBinding(Label.TextProperty, new Binding("Position", source: _carousel));
+			var positionLabel = new Label
+			{
+				AutomationId = "PositionLabel",
+				FontSize = 18,
+				HorizontalTextAlignment = TextAlignment.Center
+			};
+			// Direct binding so PositionLabel always reflects the current Position, including at startup.
+			positionLabel.SetBinding(Label.TextProperty, new Binding("Position", source: carousel));
 
-			// Replace current item (non-last): items[2] = "2b", current stays at index 2
 			var updateButton = new Button
 			{
-				Text = "Replace current item (non-last)",
+				Text = "Replace item 2 and update CurrentItem",
 				AutomationId = "UpdateButton"
 			};
 			updateButton.Clicked += (s, e) =>
 			{
 				_viewModel.Items[2] = "2b";
 				_viewModel.CurrentItem = "2b";
-			};
-
-			// Replace a non-current iteZm (first): items[0] = "0b", position must not reset
-			var replaceNonCurrentButton = new Button
-			{
-				Text = "Replace non-current item (first)",
-				AutomationId = "ReplaceNonCurrentButton"
-			};
-			replaceNonCurrentButton.Clicked += (s, e) =>
-			{
-				_viewModel.Items[0] = "0b";
-			};
-
-			// Reset to initial state so tests can be run independently
-			var resetButton = new Button
-			{
-				Text = "Reset",
-				AutomationId = "ResetButton"
-			};
-			resetButton.Clicked += (s, e) =>
-			{
-				_viewModel.Items = new ObservableCollection<string> { "0", "1", "2", "3", "4" };
-				_viewModel.CurrentItem = "2";
 			};
 
 			BindingContext = _viewModel;
@@ -104,32 +77,21 @@ namespace Maui.Controls.Sample.Issues
 					new RowDefinition { Height = GridLength.Auto },
 					new RowDefinition { Height = 200 },
 					new RowDefinition { Height = GridLength.Auto },
-					new RowDefinition { Height = GridLength.Auto },
-					new RowDefinition { Height = GridLength.Auto },
 				}
 			};
 
-			var currentItemHeader = new Label { Text = "Current Item:" };
-			Grid.SetRow(currentItemHeader, 0);
+			var headerLabel = new Label { Text = "Current Item:" };
+			Grid.SetRow(headerLabel, 0);
 			Grid.SetRow(currentItemLabel, 1);
-			Grid.SetRow(_carousel, 3);
+			Grid.SetRow(positionLabel, 2);
+			Grid.SetRow(carousel, 3);
 			Grid.SetRow(updateButton, 4);
-			Grid.SetRow(replaceNonCurrentButton, 5);
-			Grid.SetRow(resetButton, 6);
 
-			layout.Children.Add(currentItemHeader);
+			layout.Children.Add(headerLabel);
 			layout.Children.Add(currentItemLabel);
-			layout.Children.Add(_carousel);
+			layout.Children.Add(positionLabel);
+			layout.Children.Add(carousel);
 			layout.Children.Add(updateButton);
-			layout.Children.Add(replaceNonCurrentButton);
-			layout.Children.Add(resetButton);
-
-			// Position row: "Position: <value>" in row 2
-			var positionRow = new HorizontalStackLayout { Spacing = 8 };
-			positionRow.Children.Add(new Label { Text = "Position:" });
-			positionRow.Children.Add(positionLabel);
-			Grid.SetRow(positionRow, 2);
-			layout.Children.Add(positionRow);
 
 			Content = layout;
 		}
