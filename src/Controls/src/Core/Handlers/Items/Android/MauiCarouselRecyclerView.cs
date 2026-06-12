@@ -232,7 +232,9 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			var count = observableItemsSource.Count;
 			var savedScrollToCounter = _scrollToCounter;
 
-			bool removingCurrentElement = currentItemPosition == -1;
+			// True for Remove/Reset when the current item no longer exists in the collection.
+			// Not meaningful for Replace — the Replace branch above uses index comparison instead.
+			bool currentItemNotFound = currentItemPosition == -1;
 			bool removingLastElement = e.OldStartingIndex == count;
 			bool removingFirstElement = e.OldStartingIndex == 0;
 			bool removingAnyPrevious =
@@ -242,15 +244,30 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			_noNeedForScroll = true;
 			_gotoPosition = -1;
 
-			// When the current item is replaced in the collection, keep the carousel position
-			// at the replaced index and update CurrentItem to the new item there.
-			// Without this, removingCurrentElement=true causes the KeepItemsInView scroll mode
-			// to incorrectly reset carouselPosition to 0.
-			if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace
-				&& removingCurrentElement)
+			// Handle all Replace actions before falling into the Insert/Remove logic.
+			// - Use index comparison (e.OldStartingIndex == carouselPosition) instead of
+			//   Equals()-based GetPosition so value-type items and items overriding Equals()
+			//   are handled correctly. currentItemNotFound is unreliable for Replace.
+			// - Handle both current and non-current item Replace here to prevent the
+			//   KeepItemsInView/KeepLastItemInView path from incorrectly resetting position.
+			// - Loop mode requires the loopable adapter to be rebuilt; handle that inline.
+			if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace)
 			{
 				var replacedPosition = e.OldStartingIndex;
-				var isLastItem = e.NewStartingIndex == count - 1;
+				var isCurrentItemReplaced = replacedPosition == carouselPosition;
+				var isLastItem = replacedPosition == count - 1;
+
+				if (Carousel.Loop)
+				{
+					// Loop mode uses a virtual infinite adapter — rebuild and re-scroll to
+					// preserve the infinite scroll state when the current item is replaced.
+					if (isCurrentItemReplaced)
+					{
+						UpdateAdapter();
+						ScrollToPosition(carouselPosition);
+					}
+					return;
+				}
 
 				var dispatcher = Carousel.Handler?.MauiContext?.GetDispatcher();
 				if (dispatcher is null)
@@ -260,24 +277,35 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 
 				dispatcher.Dispatch(() =>
 				{
-					if (_scrollToCounter == savedScrollToCounter
-						&& replacedPosition < (ItemsViewAdapter?.ItemsSource?.Count ?? 0))
+					try
 					{
-						SetCurrentItem(replacedPosition);
-						UpdatePosition(replacedPosition);
-					}
+						if (_scrollToCounter == savedScrollToCounter
+							&& replacedPosition < (ItemsViewAdapter?.ItemsSource?.Count ?? 0))
+						{
+							if (isCurrentItemReplaced)
+							{
+								SetCurrentItem(replacedPosition);
+								UpdatePosition(replacedPosition);
+							}
+						}
 
-					if (isLastItem)
+						if (isLastItem)
+						{
+							UpdateItemDecoration();
+						}
+
+						UpdateVisualStates();
+					}
+					finally
 					{
-						UpdateItemDecoration();
+						// Always reset so user scroll interactions are not silently blocked.
+						_isInternalPositionUpdate = false;
 					}
-
-					UpdateVisualStates();
 				});
 				return;
 			}
 
-			if (removingCurrentElement)
+			if (currentItemNotFound)
 			{
 				if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
 				{

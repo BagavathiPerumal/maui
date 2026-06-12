@@ -29,7 +29,8 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 		Size _currentSize;
 		bool _isCarouselViewReady;
 		bool _isInternalPositionUpdate;
-		bool _isHandlingReplace;
+		volatile bool _isHandlingReplace;
+		int _replaceScrollGeneration;
 		int _gotoPosition = -1;
 		NotifyCollectionChangedEventHandler _collectionChanged;
 		readonly WeakNotifyCollectionChangedProxy _proxy = new();
@@ -606,11 +607,18 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 					// Defer a direct WinUI scroll at Low priority so it runs after WinUI finishes
 					// its Normal-priority container rebind for the replaced item. Using ScrollIntoView
 					// directly avoids the async JumpToItemAsync/ViewChanged subscription chain.
+					// Capture the generation so that if another Replace (or Remove/Add) fires
+					// before the Low-priority work drains, the stale scroll is discarded.
 					var capturedPosition = position;
+					var capturedGeneration = ++_replaceScrollGeneration;
 					ListViewBase?.DispatcherQueue?.TryEnqueue(
 						Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
 						{
 							if (ListViewBase is null || !IsValidPosition(capturedPosition))
+							{
+								return;
+							}
+							if (_replaceScrollGeneration != capturedGeneration)
 							{
 								return;
 							}
