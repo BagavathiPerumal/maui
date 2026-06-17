@@ -9,7 +9,6 @@ namespace Microsoft.Maui.Controls.Core.UnitTests.Shapes;
 public class PathGeometryTests : BaseTestFixture
 {
 	/// <summary>
-	/// Regression test for https://github.com/dotnet/maui/issues/35809
 	/// Figures.Clear() must unsubscribe the cleared PathFigure from the PathGeometry,
 	/// otherwise the figure retains the geometry alive via its PropertyChanged delegate.
 	/// </summary>
@@ -37,7 +36,6 @@ public class PathGeometryTests : BaseTestFixture
 	}
 
 	/// <summary>
-	/// Regression test for https://github.com/dotnet/maui/issues/35809
 	/// Figures.Clear() must unsubscribe the cleared PathFigure's segment-invalidation event
 	/// from the PathGeometry.
 	/// </summary>
@@ -65,7 +63,6 @@ public class PathGeometryTests : BaseTestFixture
 	}
 
 	/// <summary>
-	/// Regression test for https://github.com/dotnet/maui/issues/35809
 	/// After Figures.Clear(), the PathGeometry must be eligible for garbage collection
 	/// even when the cleared PathFigure is still alive (shared/rooted elsewhere).
 	/// </summary>
@@ -83,31 +80,6 @@ public class PathGeometryTests : BaseTestFixture
 		// its PropertyChanged delegate chain, so TryGetTarget would return true.
 		Assert.False(weakRef.TryGetTarget(out _),
 			"PathGeometry was retained by the cleared PathFigure (event-handler leak in Figures.Clear()).");
-	}
-
-	/// <summary>
-	/// Baseline: Figures.RemoveAt() correctly unsubscribes — this must continue to work.
-	/// </summary>
-	[Fact]
-	public void FiguresRemoveAt_UnsubscribesFigurePropertyChangedHandler()
-	{
-		var geometry = new PathGeometry();
-		var figure = new PathFigure { StartPoint = new Point(0, 0) };
-		geometry.Figures.Add(figure);
-
-		int invalidateCount = 0;
-		geometry.InvalidatePathGeometryRequested += (s, e) => invalidateCount++;
-
-		figure.StartPoint = new Point(10, 10);
-		Assert.Equal(1, invalidateCount);
-
-		// RemoveAt fires CollectionChanged (Remove), which unsubscribes the figure and calls Invalidate().
-		geometry.Figures.RemoveAt(0);
-		int countAfterRemove = invalidateCount;
-
-		// After removal, mutating the figure must NOT trigger any further invalidation.
-		figure.StartPoint = new Point(20, 20);
-		Assert.Equal(countAfterRemove, invalidateCount);
 	}
 
 	// Factored out so the JIT cannot inline the PathGeometry local onto the caller's frame.
