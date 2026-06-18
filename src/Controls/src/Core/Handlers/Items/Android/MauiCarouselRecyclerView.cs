@@ -266,12 +266,14 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 						UpdateAdapter();
 						ScrollToPosition(carouselPosition);
 					}
+					_isInternalPositionUpdate = false;
 					return;
 				}
 
 				var dispatcher = Carousel.Handler?.MauiContext?.GetDispatcher();
 				if (dispatcher is null)
 				{
+					_isInternalPositionUpdate = false;
 					return;
 				}
 
