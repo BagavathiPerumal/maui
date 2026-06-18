@@ -363,13 +363,18 @@ internal class KnownMarkups
 			// 4. No explicit source: use x:DataType if available to produce a compiled TypedBinding.
 			bool isAncestorTypeSource = false;
 			ITypeSymbol? xRefSourceType = null;
-			if (TryGetRelativeSourceAncestorType(markupNode, context, out var ancestorTypeSymbol)
+			if (TryGetRelativeSourceAncestorType(markupNode, context, out var ancestorTypeSymbol, out bool hasAncestorType)
 				&& ancestorTypeSymbol is not null)
 			{
 				dataTypeSymbol = ancestorTypeSymbol;
-				isAncestorTypeSource = true;
 			}
-			else if (!HasRelativeSourceBinding(markupNode))
+
+			// isAncestorTypeSource is true whenever AncestorType was present, regardless of whether
+			// the type resolved successfully. This prevents a BindingPropertyNotFound diagnostic from
+			// firing on a path that was never compiled before — even when resolution fails.
+			isAncestorTypeSource = hasAncestorType;
+
+			if (!isAncestorTypeSource && !HasRelativeSourceBinding(markupNode))
 			{
 				xRefSourceType = TryResolveXReferenceSourceType(markupNode, context);
 				dataTypeSymbol = xRefSourceType;
@@ -732,9 +737,10 @@ internal class KnownMarkups
 		// with a resolvable AncestorType. If so, returns the already-resolved AncestorType
 		// symbol from context.Types (populated earlier by ProvideValueForRelativeSourceExtension).
 		// This allows AncestorType bindings to use the compiled (trim-safe) TypedBinding path.
-		static bool TryGetRelativeSourceAncestorType(ElementNode bindingNode, SourceGenContext context, out ITypeSymbol? ancestorType)
+		static bool TryGetRelativeSourceAncestorType(ElementNode bindingNode, SourceGenContext context, out ITypeSymbol? ancestorType, out bool hasAncestorType)
 		{
 			ancestorType = null;
+			hasAncestorType = false;
 
 			// Check if Source property exists
 			if (!bindingNode.Properties.TryGetValue(new XmlName("", "Source"), out INode? sourceNode)
@@ -761,6 +767,9 @@ internal class KnownMarkups
 				return false;
 			}
 
+			// AncestorType node is present — mark the attempt regardless of resolution outcome.
+			hasAncestorType = true;
+
 			// The AncestorType is typically an x:Type extension (ElementNode).
 			// ProvideValueForRelativeSourceExtension already resolved this type
 			// and registered it in context.Types — just look it up.
@@ -778,9 +787,18 @@ internal class KnownMarkups
 				if (IsNullOrEmpty(typeName))
 					return false;
 
-				XmlType xmlType = TypeArgumentsParser.ParseSingle(typeName!, relativeSourceNode.NamespaceResolver, relativeSourceNode as IXmlLineInfo);
-				xmlType.TryResolveTypeSymbol(null, context.Compilation, context.XmlnsCache, context.TypeCache, out INamedTypeSymbol? resolvedType);
-				ancestorType = resolvedType;
+				try
+				{
+					XmlType xmlType = TypeArgumentsParser.ParseSingle(typeName!, relativeSourceNode.NamespaceResolver, relativeSourceNode as IXmlLineInfo);
+					xmlType.TryResolveTypeSymbol(null, context.Compilation, context.XmlnsCache, context.TypeCache, out INamedTypeSymbol? resolvedType);
+					ancestorType = resolvedType;
+				}
+				catch (XamlParseException)
+				{
+					// Malformed type expression or unknown prefix — silently fall back to runtime Binding.
+					return false;
+				}
+
 				return ancestorType is not null;
 			}
 
