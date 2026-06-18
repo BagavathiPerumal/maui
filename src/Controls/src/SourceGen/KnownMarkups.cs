@@ -361,11 +361,13 @@ internal class KnownMarkups
 			// 3. x:Reference: resolve the referenced element's type and compile against it.
 			//
 			// 4. No explicit source: use x:DataType if available to produce a compiled TypedBinding.
+			bool isAncestorTypeSource = false;
 			ITypeSymbol? xRefSourceType = null;
 			if (TryGetRelativeSourceAncestorType(markupNode, context, out var ancestorTypeSymbol)
 				&& ancestorTypeSymbol is not null)
 			{
 				dataTypeSymbol = ancestorTypeSymbol;
+				isAncestorTypeSource = true;
 			}
 			else if (!HasRelativeSourceBinding(markupNode))
 			{
@@ -384,10 +386,10 @@ internal class KnownMarkups
 					return true;
 				}
 
-				// Emit property-not-found diagnostic only for x:DataType-sourced bindings.
-				// For x:Reference bindings, silently fall back to runtime — these bindings
-				// were never compiled before, so emitting a new warning would be a regression.
-				if (propertyNotFoundDiagnostic is not null && xRefSourceType is null)
+				// Emit property-not-found diagnostic only for x:DataType bindings.
+				// AncestorType and x:Reference bindings silently fall back to runtime —
+				// they were never compiled before, so a new warning would be a regression.
+				if (propertyNotFoundDiagnostic is not null && xRefSourceType is null && !isAncestorTypeSource)
 				{
 					context.ReportDiagnostic(propertyNotFoundDiagnostic);
 				}
@@ -765,6 +767,21 @@ internal class KnownMarkups
 			if (ancestorTypeNode is ElementNode typeExtNode)
 			{
 				return context.Types.TryGetValue(typeExtNode, out ancestorType) && ancestorType is not null;
+			}
+
+			// AncestorType may also be a bare string (ValueNode), e.g. AncestorType="local:MyViewModel".
+			// ProvideValueForRelativeSourceExtension resolves this inline but doesn't store it in
+			// context.Types, so resolve it here using the RelativeSource node's NamespaceResolver.
+			if (ancestorTypeNode is ValueNode vnType)
+			{
+				var typeName = vnType.Value as string;
+				if (IsNullOrEmpty(typeName))
+					return false;
+
+				XmlType xmlType = TypeArgumentsParser.ParseSingle(typeName!, relativeSourceNode.NamespaceResolver, relativeSourceNode as IXmlLineInfo);
+				xmlType.TryResolveTypeSymbol(null, context.Compilation, context.XmlnsCache, context.TypeCache, out INamedTypeSymbol? resolvedType);
+				ancestorType = resolvedType;
+				return ancestorType is not null;
 			}
 
 			return false;
