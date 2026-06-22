@@ -254,7 +254,7 @@ namespace Microsoft.Maui.Controls.Shapes
 						UnsubscribeFigure(oldPathFigure);
 				}
 			}
-			else if (e.Action == NotifyCollectionChangedAction.Reset)
+			if (e.Action == NotifyCollectionChangedAction.Reset)
 			{
 				// Clear() raises Reset with OldItems = null; unsubscribe all tracked figures
 				// to prevent the cleared figures from retaining this PathGeometry alive.
