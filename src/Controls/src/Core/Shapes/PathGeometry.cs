@@ -246,7 +246,7 @@ namespace Microsoft.Maui.Controls.Shapes
 
 		void OnPathFigureCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
 		{
-			if (e.OldItems != null)
+			if (e.OldItems != null && e.Action != NotifyCollectionChangedAction.Move)
 			{
 				foreach (var oldItem in e.OldItems)
 				{
@@ -261,7 +261,7 @@ namespace Microsoft.Maui.Controls.Shapes
 				UnsubscribeAllFigures();
 			}
 
-			if (e.NewItems != null)
+			if (e.NewItems != null && e.Action != NotifyCollectionChangedAction.Move)
 			{
 				foreach (var newItem in e.NewItems)
 				{
