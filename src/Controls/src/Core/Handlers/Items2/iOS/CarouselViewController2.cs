@@ -319,8 +319,9 @@ namespace Microsoft.Maui.Controls.Handlers.Items2
 			// Replace does not change item count. Explicitly set _positionAfterUpdate using
 			// currentItemPosition (from CurrentItem, always authoritative) so CollectionViewUpdated
 			// uses the correct index even if carouselPosition is transiently stale.
-			// Loop=true is handled by GetTargetPosition() in CollectionViewUpdated.
-			if (e.Action == NotifyCollectionChangedAction.Replace && !ItemsView.Loop)
+			// Applies to both Loop=false and Loop=true — CollectionViewUpdated uses _positionAfterUpdate
+			// directly for Replace (not GetTargetPosition), so the correct index must be set here.
+			if (e.Action == NotifyCollectionChangedAction.Replace)
 			{
 				_positionAfterUpdate = currentItemPosition >= 0 ? currentItemPosition : carouselPosition;
 			}
@@ -347,9 +348,10 @@ namespace Microsoft.Maui.Controls.Handlers.Items2
 			// For Replace, GetTargetPosition() returns 0 under KeepItemsInView (the default) — that
 			// would incorrectly reset the carousel to the first item. Preserve the pre-update position
 			// so the carousel stays on the replaced item's index.
-			// For Loop=true the loopable adapter uses virtual indices, so fall through to
-			// GetTargetPosition() which correctly resolves the looped position.
-			if (e.Action == NotifyCollectionChangedAction.Replace && !ItemsView.Loop)
+			// This applies to both Loop=false and Loop=true: _positionAfterUpdate holds carouselPosition
+			// (set in CollectionViewUpdating), which is the real index that ScrollToPosition and
+			// GetScrollToIndexPath convert to the correct virtual index for loop mode.
+			if (e.Action == NotifyCollectionChangedAction.Replace)
 			{
 				targetPosition = _positionAfterUpdate;
 			}

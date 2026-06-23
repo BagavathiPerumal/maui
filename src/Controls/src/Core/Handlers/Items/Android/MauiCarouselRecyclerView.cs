@@ -227,6 +227,17 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			// Set flag to disable animation during collection changes
 			_isInternalPositionUpdate = true;
 
+			// Guard: handler or MauiContext may be null during a teardown race (a background-thread
+			// collection change firing after TearDownOldElement begins). Reset the flag before
+			// bailing out so future scroll interactions are not permanently blocked. All code paths
+			// below assume Handler and MauiContext are non-null; a single guard here is preferable
+			// to inconsistent null-checks scattered across individual paths.
+			if (Carousel.Handler?.MauiContext is null)
+			{
+				_isInternalPositionUpdate = false;
+				return;
+			}
+
 			var carouselPosition = Carousel.Position;
 			var currentItemPosition = observableItemsSource.GetPosition(Carousel.CurrentItem);
 			var count = observableItemsSource.Count;
@@ -253,57 +264,7 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			// - Loop mode requires the loopable adapter to be rebuilt; handle that inline.
 			if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace)
 			{
-				var replacedPosition = e.OldStartingIndex;
-				var isCurrentItemReplaced = replacedPosition == carouselPosition;
-				var isLastItem = replacedPosition == count - 1;
-
-				if (Carousel.Loop)
-				{
-					// Loop mode uses a virtual infinite adapter — rebuild and re-scroll to
-					// preserve the infinite scroll state when the current item is replaced.
-					if (isCurrentItemReplaced)
-					{
-						UpdateAdapter();
-						ScrollToPosition(carouselPosition);
-					}
-					_isInternalPositionUpdate = false;
-					return;
-				}
-
-				var dispatcher = Carousel.Handler?.MauiContext?.GetDispatcher();
-				if (dispatcher is null)
-				{
-					_isInternalPositionUpdate = false;
-					return;
-				}
-
-				dispatcher.Dispatch(() =>
-				{
-					try
-					{
-						if (_scrollToCounter == savedScrollToCounter
-							&& replacedPosition < (ItemsViewAdapter?.ItemsSource?.Count ?? 0))
-						{
-							if (isCurrentItemReplaced)
-							{
-								SetCurrentItem(replacedPosition);
-								UpdatePosition(replacedPosition);
-							}
-						}
-
-						if (isLastItem)
-						{
-							UpdateItemDecoration();
-						}
-
-						UpdateVisualStates();
-					}
-					finally
-					{
-						// Always reset so user scroll interactions are not silently blocked.
-						_isInternalPositionUpdate = false;
-					}
-				});
+				HandleReplaceAction(e, carouselPosition, count, savedScrollToCounter);
 				return;
 			}
 
@@ -391,6 +352,70 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 							_isInternalPositionUpdate = false;
 						}
 					});
+		}
+
+		void HandleReplaceAction(
+			System.Collections.Specialized.NotifyCollectionChangedEventArgs e,
+			int carouselPosition,
+			int count,
+			int savedScrollToCounter)
+		{
+			var replacedPosition = e.OldStartingIndex;
+			var isCurrentItemReplaced = replacedPosition == carouselPosition;
+			var isLastItem = replacedPosition == count - 1;
+
+			if (Carousel.Loop)
+			{
+				// Loop mode uses a virtual infinite adapter. Any Replace — not only
+				// current-item replacements — requires a full adapter rebuild because
+				// the loop manager replicates all items across the virtual scroll range;
+				// stale data at any index will appear when the user scrolls past it.
+				UpdateAdapter();
+				if (isCurrentItemReplaced)
+				{
+					ScrollToPosition(carouselPosition);
+				}
+				_isInternalPositionUpdate = false;
+				return;
+			}
+
+			// Handler and MauiContext are guaranteed non-null here — CollectionItemsSourceChanged
+			// guards for null at its entry point and returns early.
+			Carousel.Handler.MauiContext.GetDispatcher().Dispatch(() =>
+			{
+				try
+				{
+					// Guard: verify the replaced index is still within bounds.
+					// A concurrent Remove between the Replace event and this callback could
+					// shrink the collection, making replacedPosition invalid. This is a
+					// known limitation of the asynchronous dispatch model (pre-existing).
+					if (_scrollToCounter == savedScrollToCounter
+						&& replacedPosition < (ItemsViewAdapter?.ItemsSource?.Count ?? 0))
+					{
+						if (isCurrentItemReplaced)
+						{
+							// Replace preserves the current position, so no scroll is needed.
+							// The RecyclerView redraws the item via the adapter's built-in
+							// NotifyItemChanged notification. ScrollToPosition is intentionally
+							// omitted here to avoid an unnecessary scroll to the already-visible item.
+							SetCurrentItem(replacedPosition);
+							UpdatePosition(replacedPosition);
+						}
+					}
+
+					if (isLastItem)
+					{
+						UpdateItemDecoration();
+					}
+
+					UpdateVisualStates();
+				}
+				finally
+				{
+					// Always reset so user scroll interactions are not silently blocked.
+					_isInternalPositionUpdate = false;
+				}
+			});
 		}
 
 		void UpdateItemDecoration()
