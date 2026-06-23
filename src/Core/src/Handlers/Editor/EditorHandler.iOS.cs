@@ -12,6 +12,10 @@ namespace Microsoft.Maui.Handlers
 	{
 		readonly MauiTextViewEventProxy _proxy = new();
 
+		// Cached result of the UICollectionViewCell ancestor check. Null = not yet computed.
+		// Reset on ConnectHandler/DisconnectHandler so recycled cells are re-evaluated.
+		bool? _isInsideCollectionViewCell;
+
 		protected override MauiTextView CreatePlatformView()
 		{
 			var platformEditor = new MauiTextView();
@@ -28,11 +32,13 @@ namespace Microsoft.Maui.Handlers
 
 		protected override void ConnectHandler(MauiTextView platformView)
 		{
+			_isInsideCollectionViewCell = null;
 			_proxy.Connect(VirtualView, platformView);
 		}
 
 		protected override void DisconnectHandler(MauiTextView platformView)
 		{
+			_isInsideCollectionViewCell = null;
 			_proxy.Disconnect(platformView);
 		}
 
@@ -122,21 +128,30 @@ namespace Microsoft.Maui.Handlers
 			return result;
 		}
 
-		// Walks the view hierarchy to determine whether this Editor is hosted inside a
-		// UICollectionViewCell. Cells manage their own sizing via PreferredLayoutAttributesFittingAttributes
-		// and their Bounds.Height may temporarily equal the EstimatedItemSize (e.g., 1 px) before the
-		// self-sizing pass completes. Capping the measured height to that transient value would make
-		// the cell invisible, so the scrollability cap in GetDesiredSize must be skipped for cells.
+		// Checks whether this Editor is hosted inside a UICollectionViewCell. Cells manage their
+		// own sizing via PreferredLayoutAttributesFittingAttributes and their Bounds.Height may
+		// temporarily equal the EstimatedItemSize (e.g., 1 px) before the self-sizing pass
+		// completes. Capping the measured height to that transient value would make the cell
+		// invisible, so the scrollability cap in GetDesiredSize must be skipped for cells.
+		// Result is cached per handler instance and cleared on Connect/Disconnect to handle
+		// recycled cells correctly.
 		bool IsInsideCollectionViewCell()
 		{
-			var view = PlatformView.Superview;
-			while (view is not null)
+			if (_isInsideCollectionViewCell is null)
 			{
-				if (view is UICollectionViewCell)
-					return true;
-				view = view.Superview;
+				var view = PlatformView.Superview;
+				while (view is not null)
+				{
+					if (view is UICollectionViewCell)
+					{
+						_isInsideCollectionViewCell = true;
+						return true;
+					}
+					view = view.Superview;
+				}
+				_isInsideCollectionViewCell = false;
 			}
-			return false;
+			return _isInsideCollectionViewCell.Value;
 		}
 
 		public static void MapText(IEditorHandler handler, IEditor editor)
