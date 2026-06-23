@@ -85,9 +85,14 @@ namespace Microsoft.Maui.Handlers
 					// When content overflows the current frame and auto-growth is disabled,
 					// use Bounds.Height as the constraint to preserve scrollability after rotation.
 					// Editors with AutoSize=TextChanges (AllowAutoGrowth=true) are exempt.
+					// Editors inside a UICollectionViewCell are also exempt: cells size themselves
+					// to content, so their Bounds.Height may temporarily reflect an estimated item
+					// size (e.g., 1px) rather than a real frame bound. Capping to that value would
+					// make the cell invisible (#35114, avoid regression for #27766).
 					if (!PlatformView.AllowAutoGrowth
 						&& currentHeight > 0
-						&& PlatformView.ContentSize.Height > currentHeight)
+						&& PlatformView.ContentSize.Height > currentHeight
+						&& !IsInsideCollectionViewCell())
 					{
 						heightConstraint = currentHeight; // real bound — cap will apply
 					}
@@ -115,6 +120,23 @@ namespace Microsoft.Maui.Handlers
 			}
 
 			return result;
+		}
+
+		// Walks the view hierarchy to determine whether this Editor is hosted inside a
+		// UICollectionViewCell. Cells manage their own sizing via PreferredLayoutAttributesFittingAttributes
+		// and their Bounds.Height may temporarily equal the EstimatedItemSize (e.g., 1 px) before the
+		// self-sizing pass completes. Capping the measured height to that transient value would make
+		// the cell invisible, so the scrollability cap in GetDesiredSize must be skipped for cells.
+		bool IsInsideCollectionViewCell()
+		{
+			var view = PlatformView.Superview;
+			while (view is not null)
+			{
+				if (view is UICollectionViewCell)
+					return true;
+				view = view.Superview;
+			}
+			return false;
 		}
 
 		public static void MapText(IEditorHandler handler, IEditor editor)
