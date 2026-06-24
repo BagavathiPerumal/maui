@@ -12,9 +12,17 @@ namespace Microsoft.Maui.Handlers
 	{
 		readonly MauiTextViewEventProxy _proxy = new();
 
-		// Cached result of the UICollectionViewCell ancestor check. Null = not yet computed.
-		// Reset on ConnectHandler/DisconnectHandler so recycled cells are re-evaluated.
-		bool? _isInsideCollectionViewCell;
+		// Height from MAUI's last PlatformArrange call. Native layout containers can assign
+		// a transient placeholder height directly to a view's Bounds via UIKit, bypassing
+		// MAUI's arrange pipeline. This field is zero until MAUI explicitly arranges the view,
+		// making it a reliable guard for the scrollability cap in GetDesiredSize.
+		double _lastArrangedHeight;
+
+		public override void PlatformArrange(Rect rect)
+		{
+			_lastArrangedHeight = rect.Height;
+			base.PlatformArrange(rect);
+		}
 
 		protected override MauiTextView CreatePlatformView()
 		{
@@ -32,24 +40,12 @@ namespace Microsoft.Maui.Handlers
 
 		protected override void ConnectHandler(MauiTextView platformView)
 		{
-			_isInsideCollectionViewCell = null;
-			((IUIViewLifeCycleEvents)platformView).MovedToWindow += OnMovedToWindow;
 			_proxy.Connect(VirtualView, platformView);
 		}
 
 		protected override void DisconnectHandler(MauiTextView platformView)
 		{
-			_isInsideCollectionViewCell = null;
-			((IUIViewLifeCycleEvents)platformView).MovedToWindow -= OnMovedToWindow;
 			_proxy.Disconnect(platformView);
-		}
-
-		void OnMovedToWindow(object? sender, EventArgs e)
-		{
-			// Reset the cached result when the view enters a new window.
-			// A recycled cell may now live in a different hierarchy position,
-			// so the stale cached value must not be reused.
-			_isInsideCollectionViewCell = null;
 		}
 
 		public override bool NeedsContainer
@@ -96,21 +92,18 @@ namespace Microsoft.Maui.Handlers
 
 				if (double.IsInfinity(heightConstraint))
 				{
-					var currentHeight = (double)PlatformView.Bounds.Height;
+					// Prefer _lastArrangedHeight over PlatformView.Bounds.Height. Native containers
+					// can set Bounds directly via UIKit outside MAUI's pipeline, making Bounds.Height
+					// unreliable. _lastArrangedHeight is zero until MAUI explicitly arranges the view,
+					// so the cap is skipped for transient placeholder frames and applied only once
+					// MAUI has given the view a real frame.
+					var currentHeight = _lastArrangedHeight;
 
-					// When content overflows the current frame and auto-growth is disabled,
-					// use Bounds.Height as the constraint to preserve scrollability after rotation.
-					// Editors with AutoSize=TextChanges (AllowAutoGrowth=true) are exempt.
-					// Editors inside a UICollectionViewCell are exempt ONLY when the current
-					// height is the CV1 EstimatedItemSize placeholder (≤ 1 pt). A fixed-height
-					// cell with a real frame still benefits from the scrollability cap; it is
-					// only the transient 1 pt estimated frame that must be ignored.
 					if (!PlatformView.AllowAutoGrowth
 						&& currentHeight > 0
-						&& PlatformView.ContentSize.Height > currentHeight
-						&& !(IsInsideCollectionViewCell() && currentHeight <= 1.0))
+						&& PlatformView.ContentSize.Height > currentHeight)
 					{
-						heightConstraint = currentHeight; // real bound — cap will apply
+						heightConstraint = currentHeight; // real MAUI-arranged bound — cap will apply
 					}
 					else
 					{
@@ -136,39 +129,6 @@ namespace Microsoft.Maui.Handlers
 			}
 
 			return result;
-		}
-
-		// Checks whether this Editor is hosted inside a UICollectionViewCell. Cells manage their
-		// own sizing via PreferredLayoutAttributesFittingAttributes and their Bounds.Height may
-		// temporarily equal the EstimatedItemSize (e.g., 1 pt) before the self-sizing pass
-		// completes. Capping the measured height to that transient value would make the cell
-		// invisible, so GetDesiredSize uses this check to skip the cap in that case.
-		// Result is cached per handler instance; cleared on Connect/Disconnect to handle recycled
-		// cells and on MovedToWindow in case the view moves to a different hierarchy.
-		bool IsInsideCollectionViewCell()
-		{
-			if (_isInsideCollectionViewCell is null)
-			{
-				var view = PlatformView.Superview;
-
-				// Superview is null when the view hasn't been placed in the hierarchy yet.
-				// Don't cache the result — return false but let the next call re-check once
-				// the view has a parent so the cache isn't poisoned with a stale false.
-				if (view is null)
-					return false;
-
-				while (view is not null)
-				{
-					if (view is UICollectionViewCell)
-					{
-						_isInsideCollectionViewCell = true;
-						return true;
-					}
-					view = view.Superview;
-				}
-				_isInsideCollectionViewCell = false; // Traversal complete — not inside a cell
-			}
-			return _isInsideCollectionViewCell.Value;
 		}
 
 		public static void MapText(IEditorHandler handler, IEditor editor)
