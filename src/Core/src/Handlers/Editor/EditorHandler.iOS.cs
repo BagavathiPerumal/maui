@@ -33,13 +33,23 @@ namespace Microsoft.Maui.Handlers
 		protected override void ConnectHandler(MauiTextView platformView)
 		{
 			_isInsideCollectionViewCell = null;
+			((IUIViewLifeCycleEvents)platformView).MovedToWindow += OnMovedToWindow;
 			_proxy.Connect(VirtualView, platformView);
 		}
 
 		protected override void DisconnectHandler(MauiTextView platformView)
 		{
 			_isInsideCollectionViewCell = null;
+			((IUIViewLifeCycleEvents)platformView).MovedToWindow -= OnMovedToWindow;
 			_proxy.Disconnect(platformView);
+		}
+
+		void OnMovedToWindow(object? sender, EventArgs e)
+		{
+			// Reset the cached result when the view enters a new window.
+			// A recycled cell may now live in a different hierarchy position,
+			// so the stale cached value must not be reused.
+			_isInsideCollectionViewCell = null;
 		}
 
 		public override bool NeedsContainer
@@ -91,14 +101,14 @@ namespace Microsoft.Maui.Handlers
 					// When content overflows the current frame and auto-growth is disabled,
 					// use Bounds.Height as the constraint to preserve scrollability after rotation.
 					// Editors with AutoSize=TextChanges (AllowAutoGrowth=true) are exempt.
-					// Editors inside a UICollectionViewCell are also exempt: cells size themselves
-					// to content, so their Bounds.Height may temporarily reflect an estimated item
-					// size (e.g., 1px) rather than a real frame bound. Capping to that value would
-					// make the cell invisible (#35114, avoid regression for #27766).
+					// Editors inside a UICollectionViewCell are exempt ONLY when the current
+					// height is the CV1 EstimatedItemSize placeholder (≤ 1 pt). A fixed-height
+					// cell with a real frame still benefits from the scrollability cap; it is
+					// only the transient 1 pt estimated frame that must be ignored.
 					if (!PlatformView.AllowAutoGrowth
 						&& currentHeight > 0
 						&& PlatformView.ContentSize.Height > currentHeight
-						&& !IsInsideCollectionViewCell())
+						&& !(IsInsideCollectionViewCell() && currentHeight <= 1.0))
 					{
 						heightConstraint = currentHeight; // real bound — cap will apply
 					}
@@ -130,16 +140,23 @@ namespace Microsoft.Maui.Handlers
 
 		// Checks whether this Editor is hosted inside a UICollectionViewCell. Cells manage their
 		// own sizing via PreferredLayoutAttributesFittingAttributes and their Bounds.Height may
-		// temporarily equal the EstimatedItemSize (e.g., 1 px) before the self-sizing pass
+		// temporarily equal the EstimatedItemSize (e.g., 1 pt) before the self-sizing pass
 		// completes. Capping the measured height to that transient value would make the cell
-		// invisible, so the scrollability cap in GetDesiredSize must be skipped for cells.
-		// Result is cached per handler instance and cleared on Connect/Disconnect to handle
-		// recycled cells correctly.
+		// invisible, so GetDesiredSize uses this check to skip the cap in that case.
+		// Result is cached per handler instance; cleared on Connect/Disconnect to handle recycled
+		// cells and on MovedToWindow in case the view moves to a different hierarchy.
 		bool IsInsideCollectionViewCell()
 		{
 			if (_isInsideCollectionViewCell is null)
 			{
 				var view = PlatformView.Superview;
+
+				// Superview is null when the view hasn't been placed in the hierarchy yet.
+				// Don't cache the result — return false but let the next call re-check once
+				// the view has a parent so the cache isn't poisoned with a stale false.
+				if (view is null)
+					return false;
+
 				while (view is not null)
 				{
 					if (view is UICollectionViewCell)
@@ -149,7 +166,7 @@ namespace Microsoft.Maui.Handlers
 					}
 					view = view.Superview;
 				}
-				_isInsideCollectionViewCell = false;
+				_isInsideCollectionViewCell = false; // Traversal complete — not inside a cell
 			}
 			return _isInsideCollectionViewCell.Value;
 		}
