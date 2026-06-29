@@ -20,6 +20,12 @@ namespace Maui.Controls.Sample.Issues
 				NonCurrentCurrentItem = "2",
 				LoopItems = new ObservableCollection<string> { "A", "B", "C" },
 				LoopCurrentItem = "C",
+				// Section 6: Loop=true, replace a non-current item. CurrentItem at "C" (position 2)
+				// mirrors the existing loop section init to avoid the iOS/Mac virtual-adapter timing race.
+				// Without the fix, UpdateAdapter() resets position to 0 and ScrollToPosition is never
+				// called (isCurrentItemReplaced=false), leaving the carousel stuck at 0.
+				LoopNonCurrentItems = new ObservableCollection<string> { "A", "B", "C" },
+				LoopNonCurrentCurrentItem = "C",
 				// KeepLastItemInView test: CurrentItem at position 0; Replace last item must not move position.
 				KeepLastItems = new ObservableCollection<string> { "P", "Q", "R" },
 				KeepLastCurrentItem = "P",
@@ -182,8 +188,61 @@ namespace Maui.Controls.Sample.Issues
 				_viewModel.LoopCurrentItem = "C2";
 			};
 
-			// ── Section 4: KeepLastItemInView — Replace last (non-current) item ────
-			// When ItemsUpdatingScrollMode = KeepLastItemInView, Insert/Remove operations
+			// ── Section 3b: Replace non-current item (Loop=true) ──────────────────
+			// Reproduces the bug where UpdateAdapter() always resets Position to 0, but
+			// ScrollToPosition was only called when isCurrentItemReplaced=true. This meant
+			// replacing any non-current item in loop mode silently jumped the carousel to 0.
+			// CurrentItem="C" (position 2) mirrors the existing loop section to avoid the
+			// iOS/Mac virtual-adapter timing race at initialisation.
+			var loopNonCurrentCurrentItemLabel = new Label
+			{
+				AutomationId = "LoopNonCurrentCurrentItemLabel",
+				FontSize = 24,
+				HorizontalTextAlignment = TextAlignment.Center
+			};
+			loopNonCurrentCurrentItemLabel.SetBinding(Label.TextProperty, new Binding(nameof(Issue35643ViewModel.LoopNonCurrentCurrentItem)));
+
+			var loopNonCurrentCarousel = new CarouselView
+			{
+				Loop = true,
+				AutomationId = "LoopNonCurrentCarouselView",
+				ItemTemplate = new DataTemplate(() =>
+				{
+					var lbl = new Label
+					{
+						HorizontalTextAlignment = TextAlignment.Center,
+						VerticalTextAlignment = TextAlignment.Center,
+						FontSize = 20
+					};
+					lbl.SetBinding(Label.TextProperty, ".");
+					return new Frame { Content = lbl, BackgroundColor = Colors.LightSalmon };
+				})
+			};
+			loopNonCurrentCarousel.SetBinding(CarouselView.ItemsSourceProperty, new Binding(nameof(Issue35643ViewModel.LoopNonCurrentItems)));
+			loopNonCurrentCarousel.SetBinding(CarouselView.CurrentItemProperty, new Binding(nameof(Issue35643ViewModel.LoopNonCurrentCurrentItem)));
+
+			var loopNonCurrentPositionLabel = new Label
+			{
+				AutomationId = "LoopNonCurrentPositionLabel",
+				FontSize = 18,
+				HorizontalTextAlignment = TextAlignment.Center
+			};
+			loopNonCurrentPositionLabel.SetBinding(Label.TextProperty, new Binding("Position", source: loopNonCurrentCarousel));
+
+			// Replace items[0] ("A" → "Ab") — a non-current item (current is "C" at position 2).
+			// Without fix: UpdateAdapter() resets to 0 and no ScrollToPosition is called → position = 0.
+			// With fix: UpdateAdapter() resets to 0 then ScrollToPosition(2) restores → position = 2.
+			var loopNonCurrentReplaceButton = new Button
+			{
+				Text = "Replace item 0 (non-current) in loop carousel",
+				AutomationId = "LoopNonCurrentReplaceButton"
+			};
+			loopNonCurrentReplaceButton.Clicked += (s, e) =>
+			{
+				_viewModel.LoopNonCurrentItems[0] = "Ab";
+			};
+
+			// ── Section 4: KeepLastItemInView — Replace last (non-current) item ────			// When ItemsUpdatingScrollMode = KeepLastItemInView, Insert/Remove operations
 			// scroll the carousel to the last item. A Replace must bypass this path entirely;
 			// CurrentItem at position 0 must stay in view and Position must not jump to 2.
 			var keepLastCurrentItemLabel = new Label
@@ -314,6 +373,12 @@ namespace Maui.Controls.Sample.Issues
 						loopPositionLabel,
 						new ContentView { Content = loopCarousel, HeightRequest = 200 },
 						loopReplaceButton,
+						new Label { Text = "── Loop=true: Replace non-current item ──", FontAttributes = FontAttributes.Bold },
+						new Label { Text = "Loop NonCurrent Item:" },
+						loopNonCurrentCurrentItemLabel,
+						loopNonCurrentPositionLabel,
+						new ContentView { Content = loopNonCurrentCarousel, HeightRequest = 200 },
+						loopNonCurrentReplaceButton,
 						new Label { Text = "── KeepLastItemInView: Replace last item ──", FontAttributes = FontAttributes.Bold },
 						new Label { Text = "KeepLast Current Item:" },
 						keepLastCurrentItemLabel,
@@ -342,6 +407,8 @@ namespace Maui.Controls.Sample.Issues
 		string _nonCurrentCurrentItem;
 		ObservableCollection<string> _loopItems;
 		string _loopCurrentItem;
+		ObservableCollection<string> _loopNonCurrentItems;
+		string _loopNonCurrentCurrentItem;
 		ObservableCollection<string> _keepLastItems;
 		string _keepLastCurrentItem;
 		ObservableCollection<string> _dupItems;
@@ -381,6 +448,18 @@ namespace Maui.Controls.Sample.Issues
 		{
 			get => _loopCurrentItem;
 			set => SetProperty(ref _loopCurrentItem, value);
+		}
+
+		public ObservableCollection<string> LoopNonCurrentItems
+		{
+			get => _loopNonCurrentItems;
+			set => SetProperty(ref _loopNonCurrentItems, value);
+		}
+
+		public string LoopNonCurrentCurrentItem
+		{
+			get => _loopNonCurrentCurrentItem;
+			set => SetProperty(ref _loopNonCurrentCurrentItem, value);
 		}
 
 		public ObservableCollection<string> KeepLastItems

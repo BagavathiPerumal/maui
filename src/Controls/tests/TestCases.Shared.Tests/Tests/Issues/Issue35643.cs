@@ -155,5 +155,37 @@ namespace Microsoft.Maui.TestCases.Tests.Issues
 			Assert.That(App.FindElement("DupPositionLabel").GetText(), Is.EqualTo("0"),
 				"Position should stay at 0 — replacing duplicate-value item must not affect current position");
 		}
+	[Test]
+		[Order(6)]
+		[Category(UITestCategories.CarouselView)]
+		public void PositionShouldNotChangeWhenNonCurrentItemIsReplacedWithLoopEnabled()
+		{
+			// Scroll to the new loop non-current section button.
+			App.ScrollTo("LoopNonCurrentReplaceButton");
+
+			// Initial state: LoopNonCurrentItems=["A","B","C"], LoopNonCurrentCurrentItem="C", Position=2.
+			// "C" is used as the initial current item (same as the existing loop test) to avoid the
+			// iOS/Mac virtual-adapter timing race where UICollectionView renders at Row 0 = index (Count-1).
+			App.WaitForElement("LoopNonCurrentCurrentItemLabel");
+			Assert.That(App.FindElement("LoopNonCurrentCurrentItemLabel").GetText(), Is.EqualTo("C"),
+				"Initial LoopNonCurrentCurrentItem should be 'C'");
+			Assert.That(App.FindElement("LoopNonCurrentPositionLabel").GetText(), Is.EqualTo("2"),
+				"Initial loop non-current carousel Position should be 2");
+
+			// Replace items[0] ("A" → "Ab") — a non-current item while the current is "C" at position 2.
+			// Bug (without fix): UpdateAdapter() resets Position to 0; isCurrentItemReplaced=false so
+			// ScrollToPosition was never called → carousel jumps to 0.
+			// Fix: ScrollToPosition(carouselPosition) is always called after UpdateAdapter() → stays at 2.
+			App.WaitForElement("LoopNonCurrentReplaceButton");
+			App.Tap("LoopNonCurrentReplaceButton");
+
+			// CurrentItem must remain "C" — only items[0] was replaced
+			Assert.That(App.FindElement("LoopNonCurrentCurrentItemLabel").GetText(), Is.EqualTo("C"),
+				"LoopNonCurrentCurrentItem should remain 'C' after replacing a non-current item in loop mode");
+
+			// Position must NOT reset to 0 — this is the exact bug this test reproduces
+			Assert.That(App.FindElement("LoopNonCurrentPositionLabel").GetText(), Is.EqualTo("2"),
+				"Loop carousel Position should stay at 2 after replacing a non-current item — UpdateAdapter() must not silently reset position");
+		}
 	}
 }

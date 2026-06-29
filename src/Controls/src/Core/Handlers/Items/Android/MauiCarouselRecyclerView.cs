@@ -371,10 +371,11 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 				// the loop manager replicates all items across the virtual scroll range;
 				// stale data at any index will appear when the user scrolls past it.
 				UpdateAdapter();
-				if (isCurrentItemReplaced)
-				{
-					ScrollToPosition(carouselPosition);
-				}
+				// UpdateAdapter() resets Position=0 and CurrentItem=null, then UpdateInitialPosition()
+				// sets CurrentItem to items[0]. Restore the correct item and scroll position explicitly
+				// regardless of whether the replaced item was the current item or not.
+				SetCurrentItem(carouselPosition);
+				ScrollToPosition(carouselPosition);
 				_isInternalPositionUpdate = false;
 				return;
 			}
