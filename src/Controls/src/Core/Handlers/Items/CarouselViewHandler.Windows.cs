@@ -29,8 +29,6 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 		Size _currentSize;
 		bool _isCarouselViewReady;
 		bool _isInternalPositionUpdate;
-		volatile bool _isHandlingReplace;
-		int _replaceScrollGeneration;
 		int _gotoPosition = -1;
 		NotifyCollectionChangedEventHandler _collectionChanged;
 		readonly WeakNotifyCollectionChangedProxy _proxy = new();
@@ -411,15 +409,6 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			if (CollectionViewSource == null)
 				return;
 
-			// During a Replace operation the item content changes but the visual position must not
-			// change. Scrolling here would subscribe to ScrollViewer.ViewChanged and risk picking
-			// up a spurious ViewChanged event emitted by WinUI's container rebind, which can
-			// produce an incorrect AdjustToCenterAsync calculation that snaps to the wrong item.
-			if (_isHandlingReplace)
-			{
-				return;
-			}
-
 			var currentItemPosition = GetItemPositionInCarousel(ItemsView.CurrentItem);
 
 			if (currentItemPosition < 0 || currentItemPosition >= ItemCount)
@@ -582,56 +571,6 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 
 		void OnCollectionItemsSourceChanged(object sender, NotifyCollectionChangedEventArgs e)
 		{
-			// Replace does not change item count — preserve the current position and update
-			// CurrentItem to the new item at the replaced index. Skip all Insert/Remove logic
-			// including KeepItemsInView/KeepLastItemInView, which are designed for Insert/Remove.
-			// Setting _isHandlingReplace suppresses the scroll triggered by MapCurrentItem so that
-			// JumpToItemAsync does not subscribe to ScrollViewer.ViewChanged and inadvertently
-			// capture a spurious ViewChanged event emitted by WinUI's container rebind, which
-			// would snap the carousel to the wrong position.
-			if (e.Action == NotifyCollectionChangedAction.Replace)
-			{
-				var position = ItemsView.Position;
-				if (IsValidPosition(position))
-				{
-					_isHandlingReplace = true;
-					try
-					{
-						SetCarouselViewCurrentItem(position);
-					}
-					finally
-					{
-						_isHandlingReplace = false;
-					}
-
-					// Defer a direct WinUI scroll at Low priority so it runs after WinUI finishes
-					// its Normal-priority container rebind for the replaced item. Using ScrollIntoView
-					// directly avoids the async JumpToItemAsync/ViewChanged subscription chain.
-					// Capture the generation so that if another Replace (or Remove/Add) fires
-					// before the Low-priority work drains, the stale scroll is discarded.
-					var capturedPosition = position;
-					var capturedGeneration = ++_replaceScrollGeneration;
-					ListViewBase?.DispatcherQueue?.TryEnqueue(
-						Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-						{
-							if (ListViewBase is null || !IsValidPosition(capturedPosition))
-							{
-								return;
-							}
-							if (_replaceScrollGeneration != capturedGeneration)
-							{
-								return;
-							}
-							var item = GetItem(capturedPosition);
-							if (item is not null)
-							{
-								ListViewBase.ScrollIntoView(item, ScrollIntoViewAlignment.Leading);
-							}
-						});
-				}
-				return;
-			}
-
 			// Set flag to disable animation during collection changes
 			_isInternalPositionUpdate = true;
 			

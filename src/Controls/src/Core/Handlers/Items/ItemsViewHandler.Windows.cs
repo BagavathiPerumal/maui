@@ -133,17 +133,6 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			if (((IViewHandler)this).VirtualView is null || ListViewBase is null)
 				return;
 
-			// ItemsUpdatingScrollMode (KeepItemsInView / KeepLastItemInView) is designed for
-			// Insert and Remove operations where the item count changes. For a Replace
-			// (ItemChanged), the count is unchanged and CarouselView manages its own scroll
-			// position via OnCollectionItemsSourceChanged. Calling ScrollIntoView(view[0]) here
-			// would incorrectly reset the visual carousel position to index 0.
-			if (@event?.CollectionChange == global::Windows.Foundation.Collections.CollectionChange.ItemChanged
-				&& VirtualView is CarouselView)
-			{
-				return;
-			}
-
 			var mode = VirtualView.ItemsUpdatingScrollMode;
 
 			if (mode != ItemsUpdatingScrollMode.KeepItemsInView && mode != ItemsUpdatingScrollMode.KeepLastItemInView)
