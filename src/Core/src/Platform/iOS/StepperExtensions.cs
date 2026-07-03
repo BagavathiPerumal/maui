@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using ObjCRuntime;
 using UIKit;
 using CoreGraphics;
@@ -7,6 +8,15 @@ namespace Microsoft.Maui.Platform
 {
 	public static class StepperExtensions
 	{
+		// Tracks, per UIStepper instance, whether its subviews were ever given an explicit
+		// mirrored Transform/SemanticContentAttribute (see UpdateFlowDirection below). This lets
+		// us reset those subviews when flow direction reverts to LTR, without having to walk
+		// (and thereby force UIKit to lazily realize) platformStepper.Subviews for steppers that
+		// have always been LTR - preserving the memory-leak fix for the common case while still
+		// correctly restoring subviews that were previously mirrored. Entries are automatically
+		// removed when the UIStepper is collected.
+		static readonly ConditionalWeakTable<UIStepper, StrongBox<bool>> s_subviewsMirrored = new();
+
 		public static void UpdateMinimum(this UIStepper platformStepper, IStepper stepper)
 		{
 			platformStepper.MinimumValue = stepper.Minimum;
@@ -84,6 +94,8 @@ namespace Microsoft.Maui.Platform
 							subview.Transform = transform;
 						}
 					});
+
+					s_subviewsMirrored.GetOrCreateValue(platformStepper).Value = true;
 				}
 				else if (!platformStepper.Transform.IsIdentity)
 				{
@@ -95,6 +107,27 @@ namespace Microsoft.Maui.Platform
 					{
 						platformStepper.Transform = transform;
 					});
+
+					// If this stepper's subviews were previously mirrored (see the `needsMirroring`
+					// branch above), their individual Transform/SemanticContentAttribute values are
+					// independent of the parent's and were never reset by the parent-only identity
+					// restore above. Reset them now so the glyphs don't stay visually mirrored.
+					// This only walks Subviews for steppers that actually were mirrored at some
+					// point - LTR-only steppers never hit this and never pay the subview-realization
+					// cost that the memory-leak fix avoids.
+					if (s_subviewsMirrored.TryGetValue(platformStepper, out var mirrored) && mirrored.Value)
+					{
+						UIView.PerformWithoutAnimation(() =>
+						{
+							foreach (var subview in platformStepper.Subviews)
+							{
+								subview.SemanticContentAttribute = contentAttribute;
+								subview.Transform = transform;
+							}
+						});
+
+						mirrored.Value = false;
+					}
 				}
 			}
 			else

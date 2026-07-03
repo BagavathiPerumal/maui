@@ -85,10 +85,10 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 		{
 			_bound = false;
 
-			// Always detach the bound view from the ItemsView's logical children, even if this
-			// cell is being finalized (disposing == false) rather than deterministically disposed.
-			// This part is managed-object-graph-only (no native/UIKit calls) so it's safe to run
-			// regardless of which thread/finalizer state we're called from.
+			// Detach the bound view from the ItemsView's logical children. Unbind() is only
+			// ever invoked from PrepareForReuse, ItemsViewController cell recycling, or the
+			// deterministic disposing path of Dispose(bool) - never from the finalizer - so
+			// touching the managed object graph here is safe.
 			DetachFromItemsView();
 
 			if (PlatformHandler?.VirtualView is View view)
@@ -96,16 +96,15 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 				// Also detach the native platform view from the cell's ContentView, since a
 				// strong subview reference here can keep the platform view (and therefore the
 				// bound VirtualView) reachable even after logical-child bookkeeping is cleared.
-				// This touches UIKit, so only do it on the deterministic (disposing) path.
 				ClearSubviews();
 			}
 		}
 
 		// Managed-only cleanup: clears the bound view's BindingContext and removes it from the
 		// ItemsView's logical children (mirrors TemplatedCell2.Unbind()). Uses view.Parent
-		// (itself backed by a WeakReference<Element>) rather than tracking a separate reference,
-		// so this is safe to call from any thread, including a finalizer (disposing == false),
-		// since it never touches native/UIKit objects.
+		// (itself backed by a WeakReference<Element>) rather than tracking a separate reference.
+		// Only ever invoked via Unbind(), which is only called on the deterministic disposing
+		// path (see Dispose(bool)) - never from the finalizer.
 		void DetachFromItemsView()
 		{
 			if (PlatformHandler?.VirtualView is View view)
@@ -117,15 +116,14 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 
 		protected override void Dispose(bool disposing)
 		{
-			// Ensure the logical-child link back to the ItemsView is always cleaned up when
-			// the cell is deallocated, even if PrepareForReuse/Unbind was never called for this
-			// instance (e.g. the cell was never recycled by UICollectionView, or the cell is
-			// reclaimed via finalization with disposing == false).
-			DetachFromItemsView();
-
+			// Only run managed/native cleanup on the deterministic disposing path. When
+			// disposing == false (finalizer), touching the managed object graph
+			// (BindingContext, LogicalChildren, events) is unsafe: it can run on the
+			// finalizer thread and reference objects that are themselves being finalized.
+			// Unbind() already calls DetachFromItemsView(), so this also covers the case
+			// where the cell is deallocated without ever going through PrepareForReuse/Unbind.
 			if (disposing)
 			{
-				// Native/UIKit cleanup is only safe on the deterministic disposing path.
 				Unbind();
 			}
 

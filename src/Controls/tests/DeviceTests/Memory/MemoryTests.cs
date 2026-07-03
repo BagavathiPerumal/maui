@@ -342,6 +342,9 @@ public class MemoryTests : ControlsHandlerTestBase
 
 			if (view is HybridWebView)
 			{
+				// TODO: Replace with a deterministic readiness signal (e.g. awaiting the
+				// HybridWebView's navigation/initialization completion) instead of a fixed
+				// delay, to avoid flakiness on slower CI machines.
 				await Task.Delay(2000);
 			}
 

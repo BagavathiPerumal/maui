@@ -14,6 +14,10 @@ namespace Microsoft.Maui.Handlers
 
 		readonly StepperProxy _proxy = new();
 
+		// Guards against a second DisconnectHandler call touching an already-disposed
+		// native UIStepper (see the iOS 26+ Dispose() call below).
+		bool _platformViewDisposed;
+
 		protected override UIStepper CreatePlatformView()
 		{
 			return new UIStepper(System.Drawing.RectangleF.Empty);
@@ -66,6 +70,11 @@ namespace Microsoft.Maui.Handlers
 
 			_proxy.Disconnect(platformView);
 
+			if (_platformViewDisposed)
+			{
+				return;
+			}
+
 			// iOS/Mac 26+ Liquid Glass rendering holds an internal native retain cycle on
 			// UIStepper (diagnostics showed RetainCount stayed constant even after
 			// RemoveFromSuperview() and clearing all CALayer animations, ruling out both the
@@ -87,6 +96,7 @@ namespace Microsoft.Maui.Handlers
 					subview.Layer.RemoveAllAnimations();
 				}
 
+				_platformViewDisposed = true;
 				platformView.Dispose();
 			}
 		}
