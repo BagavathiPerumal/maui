@@ -339,14 +339,15 @@ public class MemoryTests : ControlsHandlerTestBase
 #pragma warning restore CS0618 // Type or member is obsolete
 			var handler = CreateHandler<LayoutHandler>(layout);
 			var viewHandler = view.Handler;
-			viewReference = new WeakReference(view);
-			handlerReference = new WeakReference(viewHandler);
-			platformViewReference = new WeakReference(viewHandler.PlatformView);
 
 			if (view is HybridWebView)
 			{
 				await Task.Delay(2000);
 			}
+
+			viewReference = new WeakReference(view);
+			handlerReference = new WeakReference(viewHandler);
+			platformViewReference = new WeakReference(viewHandler.PlatformView);
 
 			// Explicitly disconnect the child view's handler before letting it fall out of
 			// scope. Real apps tear down handlers this way (e.g. when a page/element is
