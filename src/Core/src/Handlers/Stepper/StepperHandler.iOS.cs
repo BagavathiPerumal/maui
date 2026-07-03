@@ -65,6 +65,30 @@ namespace Microsoft.Maui.Handlers
 			base.DisconnectHandler(platformView);
 
 			_proxy.Disconnect(platformView);
+
+			// iOS/Mac 26+ Liquid Glass rendering holds an internal native retain cycle on
+			// UIStepper (diagnostics showed RetainCount stayed constant even after
+			// RemoveFromSuperview() and clearing all CALayer animations, ruling out both the
+			// view hierarchy and CoreAnimation as the source - see
+			// https://github.com/dotnet/maui/issues/35985). Since this retain appears to
+			// originate from UIStepper's own private Liquid Glass implementation rather than
+			// anything MAUI creates, application code cannot release it by manipulating the
+			// view hierarchy or animations. Explicitly disposing the native object forces the
+			// .NET runtime to immediately release its own strong native handle reference
+			// instead of waiting for finalization, which - combined with the OS eventually
+			// tearing down its own internal references once the object is no longer reachable
+			// through NSObject's handle table - allows the object to be collected.
+			if (OperatingSystem.IsIOSVersionAtLeast(26) || OperatingSystem.IsMacCatalystVersionAtLeast(26))
+			{
+				platformView.RemoveFromSuperview();
+				platformView.Layer.RemoveAllAnimations();
+				foreach (var subview in platformView.Subviews)
+				{
+					subview.Layer.RemoveAllAnimations();
+				}
+
+				platformView.Dispose();
+			}
 		}
 
 		public static void MapMinimum(IStepperHandler handler, IStepper stepper)

@@ -85,10 +85,51 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 		{
 			_bound = false;
 
+			// Always detach the bound view from the ItemsView's logical children, even if this
+			// cell is being finalized (disposing == false) rather than deterministically disposed.
+			// This part is managed-object-graph-only (no native/UIKit calls) so it's safe to run
+			// regardless of which thread/finalizer state we're called from.
+			DetachFromItemsView();
+
+			if (PlatformHandler?.VirtualView is View view)
+			{
+				// Also detach the native platform view from the cell's ContentView, since a
+				// strong subview reference here can keep the platform view (and therefore the
+				// bound VirtualView) reachable even after logical-child bookkeeping is cleared.
+				// This touches UIKit, so only do it on the deterministic (disposing) path.
+				ClearSubviews();
+			}
+		}
+
+		// Managed-only cleanup: clears the bound view's BindingContext and removes it from the
+		// ItemsView's logical children (mirrors TemplatedCell2.Unbind()). Uses view.Parent
+		// (itself backed by a WeakReference<Element>) rather than tracking a separate reference,
+		// so this is safe to call from any thread, including a finalizer (disposing == false),
+		// since it never touches native/UIKit objects.
+		void DetachFromItemsView()
+		{
 			if (PlatformHandler?.VirtualView is View view)
 			{
 				view.BindingContext = null;
+				(view.Parent as ItemsView)?.RemoveLogicalChild(view);
 			}
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			// Ensure the logical-child link back to the ItemsView is always cleaned up when
+			// the cell is deallocated, even if PrepareForReuse/Unbind was never called for this
+			// instance (e.g. the cell was never recycled by UICollectionView, or the cell is
+			// reclaimed via finalization with disposing == false).
+			DetachFromItemsView();
+
+			if (disposing)
+			{
+				// Native/UIKit cleanup is only safe on the deterministic disposing path.
+				Unbind();
+			}
+
+			base.Dispose(disposing);
 		}
 
 		public override UICollectionViewLayoutAttributes PreferredLayoutAttributesFittingAttributes(

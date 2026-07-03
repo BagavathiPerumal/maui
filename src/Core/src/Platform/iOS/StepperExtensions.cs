@@ -52,16 +52,49 @@ namespace Microsoft.Maui.Platform
 			bool isIOS26 = OperatingSystem.IsIOSVersionAtLeast(26) || OperatingSystem.IsMacCatalystVersionAtLeast(26);
 			platformStepper.SemanticContentAttribute = contentAttribute;
 
-			// Apply transform to stepper subviews on iOS 26+.
+			// Apply transform to stepper subviews on iOS 26+, but only when mirroring is
+			// actually required (RTL). Touching UIStepper.Subviews forces UIKit to lazily
+			// realize the internal Liquid Glass button views (a native, render-server backed
+			// hierarchy). For the common LTR/identity-transform case this realization has no
+			// visual effect but leaves the UIStepper with a persistent native retain that
+			// outlives the .NET GC cycles used by the leak tests (see
+			// https://github.com/dotnet/maui/issues/35985). Skipping the subview walk entirely
+			// unless the control needs to be mirrored avoids triggering that retain in the
+			// overwhelmingly common non-RTL case.
 			if (isIOS26)
 			{
 				CGAffineTransform transform = GetCGAffineTransform(stepper);
-				platformStepper.Transform = transform;
+				bool needsMirroring = !transform.IsIdentity;
 
-				foreach (var subview in platformStepper.Subviews)
+				if (needsMirroring)
 				{
-					subview.SemanticContentAttribute = contentAttribute;
-					subview.Transform = transform;
+					// Setting Transform on UIStepper (and its internal Liquid Glass button subviews)
+					// implicitly creates a CoreAnimation animation on iOS 26+. That implicit
+					// animation retains the view via the render server for the animation's duration,
+					// which can outlast a GC cycle and delay/prevent collection. Wrapping the
+					// assignment in UIView.PerformWithoutAnimation disables the implicit animation
+					// so no extra native retain is taken.
+					UIView.PerformWithoutAnimation(() =>
+					{
+						platformStepper.Transform = transform;
+
+						foreach (var subview in platformStepper.Subviews)
+						{
+							subview.SemanticContentAttribute = contentAttribute;
+							subview.Transform = transform;
+						}
+					});
+				}
+				else if (!platformStepper.Transform.IsIdentity)
+				{
+					// The stepper previously had a mirrored transform applied but no longer
+					// needs it (e.g. FlowDirection changed back to LTR) - restore identity
+					// without forcing a fresh subview realization pass beyond what UIKit
+					// already has in place.
+					UIView.PerformWithoutAnimation(() =>
+					{
+						platformStepper.Transform = transform;
+					});
 				}
 			}
 			else
