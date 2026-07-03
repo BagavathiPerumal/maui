@@ -326,6 +326,9 @@ public class MemoryTests : ControlsHandlerTestBase
 			else if (view is HybridWebView hybridWebView)
 			{
 				hybridWebView.HybridRoot = "HybridTestRoot";
+#if !WINDOWS
+				await Task.Delay(1000);
+#endif
 			}
 			else if (view is TemplatedView templated)
 			{
@@ -342,10 +345,15 @@ public class MemoryTests : ControlsHandlerTestBase
 
 			if (view is HybridWebView)
 			{
-				// TODO: Replace with a deterministic readiness signal (e.g. awaiting the
-				// HybridWebView's navigation/initialization completion) instead of a fixed
-				// delay, to avoid flakiness on slower CI machines.
-				await Task.Delay(2000);
+#if WINDOWS
+				// Await WebView2's own readiness API instead of polling or using a fixed delay.
+				// EnsureCoreWebView2Async completes exactly when initialization finishes (or
+				// immediately if already initialized), so there's no magic timeout/interval to tune.
+				if (viewHandler?.PlatformView is Microsoft.UI.Xaml.Controls.WebView2 webView2)
+				{
+					await webView2.EnsureCoreWebView2Async();
+				}
+#endif
 			}
 
 			viewReference = new WeakReference(view);
