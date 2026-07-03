@@ -216,9 +216,7 @@ public class MemoryTests : ControlsHandlerTestBase
 #pragma warning restore CS0618 // Type or member is obsolete
 	[InlineData(typeof(GraphicsView))]
 	[InlineData(typeof(Grid))]
-#if TESTS_FAILS_ON_WINDOWS //For more information, see: https://github.com/dotnet/maui/issues/35985
 	[InlineData(typeof(HybridWebView))]
-#endif
 	[InlineData(typeof(Image))]
 	[InlineData(typeof(ImageButton))]
 	[InlineData(typeof(IndicatorView))]
@@ -328,7 +326,6 @@ public class MemoryTests : ControlsHandlerTestBase
 			else if (view is HybridWebView hybridWebView)
 			{
 				hybridWebView.HybridRoot = "HybridTestRoot";
-				await Task.Delay(1000);
 			}
 			else if (view is TemplatedView templated)
 			{
@@ -345,6 +342,11 @@ public class MemoryTests : ControlsHandlerTestBase
 			viewReference = new WeakReference(view);
 			handlerReference = new WeakReference(viewHandler);
 			platformViewReference = new WeakReference(viewHandler.PlatformView);
+
+			if (view is HybridWebView)
+			{
+				await Task.Delay(1000);
+			}
 
 			// Explicitly disconnect the child view's handler before letting it fall out of
 			// scope. Real apps tear down handlers this way (e.g. when a page/element is
