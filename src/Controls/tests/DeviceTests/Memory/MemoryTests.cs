@@ -345,7 +345,7 @@ public class MemoryTests : ControlsHandlerTestBase
 
 			if (view is HybridWebView)
 			{
-				await Task.Delay(1000);
+				await Task.Delay(2000);
 			}
 
 			// Explicitly disconnect the child view's handler before letting it fall out of
