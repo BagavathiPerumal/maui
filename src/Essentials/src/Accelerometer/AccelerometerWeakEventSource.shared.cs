@@ -7,7 +7,15 @@ namespace Microsoft.Maui.Devices.Sensors
 {
 	// Weakly references each subscriber's target (not the delegate itself) so a subscriber
 	// that is never removed with "-=" can still be collected, while a still-alive subscriber
-	// keeps receiving events. Mirrors the pattern used by Microsoft.Maui.WeakEventManager.
+	// keeps receiving events. Mirrors the shape of Microsoft.Maui.WeakEventManager (Core),
+	// including its use of MethodInfo.Invoke to raise events -- Essentials cannot reference
+	// Core's WeakEventManager directly here (Core already references Essentials, so the
+	// reverse reference would be circular), hence this local equivalent. MethodInfo.Invoke is
+	// used deliberately rather than a dynamically-created delegate (e.g. via
+	// MethodInfo.MakeGenericMethod/Delegate.CreateDelegate for an unknown target type): that
+	// would require RequiresDynamicCode-annotated APIs that are unsafe under NativeAOT, whereas
+	// MethodInfo.Invoke is the same pattern WeakEventManager already ships with
+	// IsAotCompatible=true in Core, so it is proven safe for this codebase's AOT/trimming story.
 	sealed class WeakEventSource<TEventArgs>
 		where TEventArgs : EventArgs
 	{
@@ -40,7 +48,7 @@ namespace Microsoft.Maui.Devices.Sensors
 				{
 					var subscription = subscriptions[i];
 
-					if (subscription.Target != null && !subscription.Target.TryGetTarget(out _))
+					if (subscription.IsDead)
 					{
 						subscriptions.RemoveAt(i);
 						continue;
@@ -55,39 +63,67 @@ namespace Microsoft.Maui.Devices.Sensors
 			}
 		}
 
+		/// <summary>
+		/// Gets whether there is at least one subscription. This is a plain count check and does
+		/// not prune dead subscriptions on every read (pruning happens lazily in <see cref="Raise"/>,
+		/// <see cref="Subscribe"/>, and <see cref="Unsubscribe"/>), so it is cheap to query on every
+		/// sensor reading without the cost of walking/mutating the subscription list each time.
+		/// </summary>
+		public bool HasHandlers
+		{
+			get
+			{
+				lock (gate)
+				{
+					return subscriptions.Count > 0;
+				}
+			}
+		}
+
 		public void Raise(object? sender, TEventArgs args)
 		{
-			List<(object? target, MethodInfo method)> toInvoke;
+			(object? target, MethodInfo method)[] toInvoke;
+			int count = 0;
 
 			lock (gate)
 			{
-				toInvoke = new List<(object?, MethodInfo)>(subscriptions.Count);
+				if (subscriptions.Count == 0)
+				{
+					return;
+				}
 
-				for (int i = subscriptions.Count - 1; i >= 0; i--)
+				toInvoke = new (object?, MethodInfo)[subscriptions.Count];
+
+				// Iterate and prune dead entries in a single forward pass, preserving subscription order.
+				for (int i = 0; i < subscriptions.Count; i++)
 				{
 					var subscription = subscriptions[i];
 
 					if (subscription.Target == null)
 					{
 						// Static method target.
-						toInvoke.Add((null, subscription.Method));
+						toInvoke[count++] = (null, subscription.Method);
 						continue;
 					}
 
 					if (subscription.Target.TryGetTarget(out var target))
 					{
-						toInvoke.Add((target, subscription.Method));
+						toInvoke[count++] = (target, subscription.Method);
 					}
 					else
 					{
 						subscriptions.RemoveAt(i);
+						i--;
 					}
 				}
 			}
 
-			for (int i = toInvoke.Count - 1; i >= 0; i--)
+			// Invoke outside the lock so subscriber code can freely subscribe/unsubscribe/raise.
+			var invokeArgs = new object?[] { sender, args };
+
+			for (int i = 0; i < count; i++)
 			{
-				toInvoke[i].method.Invoke(toInvoke[i].target, new object?[] { sender, args });
+				toInvoke[i].method.Invoke(toInvoke[i].target, invokeArgs);
 			}
 		}
 
@@ -101,6 +137,8 @@ namespace Microsoft.Maui.Devices.Sensors
 
 			public readonly WeakReference<object>? Target;
 			public readonly MethodInfo Method;
+
+			public bool IsDead => Target != null && !Target.TryGetTarget(out _);
 
 			public bool Matches(object? target, MethodInfo method)
 			{
@@ -150,7 +188,7 @@ namespace Microsoft.Maui.Devices.Sensors
 				{
 					var subscription = subscriptions[i];
 
-					if (subscription.Target != null && !subscription.Target.TryGetTarget(out _))
+					if (subscription.IsDead)
 					{
 						subscriptions.RemoveAt(i);
 						continue;
@@ -165,61 +203,65 @@ namespace Microsoft.Maui.Devices.Sensors
 			}
 		}
 
+		/// <summary>
+		/// Gets whether there is at least one subscription. This is a plain count check and does
+		/// not prune dead subscriptions on every read (pruning happens lazily in <see cref="Raise"/>,
+		/// <see cref="Subscribe"/>, and <see cref="Unsubscribe"/>), so it is cheap to query on every
+		/// sensor reading (e.g. to gate <c>ShakeDetected</c> processing) without the cost of
+		/// walking/mutating the subscription list each time.
+		/// </summary>
 		public bool HasHandlers
 		{
 			get
 			{
 				lock (gate)
 				{
-					for (int i = subscriptions.Count - 1; i >= 0; i--)
-					{
-						var subscription = subscriptions[i];
-
-						if (subscription.Target == null || subscription.Target.TryGetTarget(out _))
-						{
-							return true;
-						}
-
-						subscriptions.RemoveAt(i);
-					}
-
-					return false;
+					return subscriptions.Count > 0;
 				}
 			}
 		}
 
 		public void Raise(object? sender, EventArgs args)
 		{
-			List<(object? target, MethodInfo method)> toInvoke;
+			(object? target, MethodInfo method)[] toInvoke;
+			int count = 0;
 
 			lock (gate)
 			{
-				toInvoke = new List<(object?, MethodInfo)>(subscriptions.Count);
+				if (subscriptions.Count == 0)
+				{
+					return;
+				}
 
-				for (int i = subscriptions.Count - 1; i >= 0; i--)
+				toInvoke = new (object?, MethodInfo)[subscriptions.Count];
+
+				for (int i = 0; i < subscriptions.Count; i++)
 				{
 					var subscription = subscriptions[i];
 
 					if (subscription.Target == null)
 					{
-						toInvoke.Add((null, subscription.Method));
+						toInvoke[count++] = (null, subscription.Method);
 						continue;
 					}
 
 					if (subscription.Target.TryGetTarget(out var target))
 					{
-						toInvoke.Add((target, subscription.Method));
+						toInvoke[count++] = (target, subscription.Method);
 					}
 					else
 					{
 						subscriptions.RemoveAt(i);
+						i--;
 					}
 				}
 			}
 
-			for (int i = toInvoke.Count - 1; i >= 0; i--)
+			var invokeArgs = new object?[] { sender, args };
+
+			for (int i = 0; i < count; i++)
 			{
-				toInvoke[i].method.Invoke(toInvoke[i].target, new object?[] { sender, args });
+				toInvoke[i].method.Invoke(toInvoke[i].target, invokeArgs);
 			}
 		}
 
@@ -233,6 +275,8 @@ namespace Microsoft.Maui.Devices.Sensors
 
 			public readonly WeakReference<object>? Target;
 			public readonly MethodInfo Method;
+
+			public bool IsDead => Target != null && !Target.TryGetTarget(out _);
 
 			public bool Matches(object? target, MethodInfo method)
 			{
