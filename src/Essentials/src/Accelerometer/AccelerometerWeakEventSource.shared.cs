@@ -64,10 +64,12 @@ namespace Microsoft.Maui.Devices.Sensors
 		}
 
 		/// <summary>
-		/// Gets whether there is at least one subscription. This is a plain count check and does
-		/// not prune dead subscriptions on every read (pruning happens lazily in <see cref="Raise"/>,
-		/// <see cref="Subscribe"/>, and <see cref="Unsubscribe"/>), so it is cheap to query on every
-		/// sensor reading without the cost of walking/mutating the subscription list each time.
+		/// Gets whether there is at least one live subscription. Checks liveness without mutating
+		/// the subscription list (no <c>RemoveAt</c>/shifting), so it stays cheap to query on every
+		/// sensor reading while still being correct: unlike a plain <c>Count &gt; 0</c> check, this
+		/// does not report stale positives for subscribers that have already been collected but not
+		/// yet pruned (pruning of dead entries still happens lazily in <see cref="Raise"/>,
+		/// <see cref="Subscribe"/>, and <see cref="Unsubscribe"/>).
 		/// </summary>
 		public bool HasHandlers
 		{
@@ -75,7 +77,15 @@ namespace Microsoft.Maui.Devices.Sensors
 			{
 				lock (gate)
 				{
-					return subscriptions.Count > 0;
+					for (int i = 0; i < subscriptions.Count; i++)
+					{
+						if (!subscriptions[i].IsDead)
+						{
+							return true;
+						}
+					}
+
+					return false;
 				}
 			}
 		}
@@ -204,11 +214,12 @@ namespace Microsoft.Maui.Devices.Sensors
 		}
 
 		/// <summary>
-		/// Gets whether there is at least one subscription. This is a plain count check and does
-		/// not prune dead subscriptions on every read (pruning happens lazily in <see cref="Raise"/>,
-		/// <see cref="Subscribe"/>, and <see cref="Unsubscribe"/>), so it is cheap to query on every
-		/// sensor reading (e.g. to gate <c>ShakeDetected</c> processing) without the cost of
-		/// walking/mutating the subscription list each time.
+		/// Gets whether there is at least one live subscription. Checks liveness without mutating
+		/// the subscription list (no <c>RemoveAt</c>/shifting), so it stays cheap to query on every
+		/// sensor reading (e.g. to gate <c>ShakeDetected</c> processing) while still being correct:
+		/// unlike a plain <c>Count &gt; 0</c> check, this does not report stale positives for
+		/// subscribers that have already been collected but not yet pruned (pruning of dead entries
+		/// still happens lazily in <see cref="Raise"/>, <see cref="Subscribe"/>, and <see cref="Unsubscribe"/>).
 		/// </summary>
 		public bool HasHandlers
 		{
@@ -216,7 +227,15 @@ namespace Microsoft.Maui.Devices.Sensors
 			{
 				lock (gate)
 				{
-					return subscriptions.Count > 0;
+					for (int i = 0; i < subscriptions.Count; i++)
+					{
+						if (!subscriptions[i].IsDead)
+						{
+							return true;
+						}
+					}
+
+					return false;
 				}
 			}
 		}
