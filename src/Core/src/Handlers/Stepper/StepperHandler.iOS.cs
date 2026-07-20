@@ -15,7 +15,12 @@ namespace Microsoft.Maui.Handlers
 		readonly StepperProxy _proxy = new();
 
 		// Guards against a second DisconnectHandler call touching an already-disposed
-		// native UIStepper (see the iOS 26+ Dispose() call below).
+		// native UIStepper. In practice ElementHandler.IElementHandler.DisconnectHandler()
+		// nulls out PlatformView before invoking this method, and a subsequent ConnectHandler
+		// only ever runs against a freshly created platform view (via CreatePlatformElement),
+		// so this handler instance never sees the disposed UIStepper again. The guard remains
+		// as defense-in-depth in case a caller re-invokes DisconnectHandler directly on the
+		// same platform view instance outside that normal lifecycle.
 		bool _platformViewDisposed;
 
 		protected override UIStepper CreatePlatformView()
@@ -68,12 +73,17 @@ namespace Microsoft.Maui.Handlers
 		{
 			base.DisconnectHandler(platformView);
 
-			_proxy.Disconnect(platformView);
-
+			// Guard runs before touching platformView again, addressing the concern that a
+			// second DisconnectHandler call on an already-disposed platform view would throw
+			// ObjectDisposedException when _proxy.Disconnect unsubscribes ValueChanged. See the
+			// comment on _platformViewDisposed above for why this handler never actually
+			// re-enters this method with the disposed instance under the normal MAUI lifecycle.
 			if (_platformViewDisposed)
 			{
 				return;
 			}
+
+			_proxy.Disconnect(platformView);
 
 			// iOS/Mac 26+ Liquid Glass rendering holds an internal native retain cycle on
 			// UIStepper (diagnostics showed RetainCount stayed constant even after
