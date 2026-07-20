@@ -271,6 +271,15 @@ namespace Microsoft.Maui.Platform
 		/// Returns this view's own, already-resolved safe area component for the given edge
 		/// (Left=0, Top=1, Right=2, Bottom=3). Reflects the ACTUAL inset this view will apply,
 		/// after its own ancestor-blocking has already been factored in.
+		///
+		/// IMPORTANT: this reads <see cref="_safeArea"/>, which is only refreshed inside this
+		/// view's own <see cref="LayoutSubviews"/> (see the assignment below). Callers rely on
+		/// UIKit's top-down layout pass calling an ancestor's LayoutSubviews before its
+		/// descendants', so by the time a child resolves its own blocked edges via
+		/// <see cref="ResolveParentBlockedEdges"/>, each ancestor's <see cref="_safeArea"/> for
+		/// this pass has already been computed. If that ordering is ever violated (e.g. a
+		/// manual/forced layout of a child ahead of its parent), an ancestor's real inset could
+		/// be read as 0 (stale/default) and a double-padding regression could reappear.
 		/// </summary>
 		double GetSafeAreaComponentForEdge(int edge) => edge switch
 		{
@@ -283,8 +292,18 @@ namespace Microsoft.Maui.Platform
 
 		/// <summary>
 		/// Performs a single ancestor walk to determine which edges are already handled by
-		/// a parent MauiView with a real, non-zero resolved inset. This avoids 4 separate
-		/// FindParent walks (one per edge) by resolving all edges in one pass.
+		/// a parent MauiView with a real, non-zero resolved inset. The old boolean
+		/// IsParentHandlingSafeArea() check was also a single FindParent walk (it just checked
+		/// all 4 edges with one shared boolean predicate) — the real improvement here is
+		/// per-edge granularity: each of the 4 edges is now tracked independently, so a parent
+		/// blocking only Top no longer prevents a child from independently applying Bottom.
+		///
+		/// Note: because the walk only stops once ALL 4 edges are resolved (rather than at the
+		/// nearest ancestor that handles safe area at all), it may walk further up the tree than
+		/// the old "nearest parent only" check did — e.g. if the nearest parent only blocks Top,
+		/// the walk continues past it looking for an ancestor that blocks the remaining edges.
+		/// This is intentional (edges are resolved independently) and still bounded by tree
+		/// depth, but is a behavior change worth calling out.
 		/// </summary>
 		void ResolveParentBlockedEdges(bool[] blockedEdges)
 		{
