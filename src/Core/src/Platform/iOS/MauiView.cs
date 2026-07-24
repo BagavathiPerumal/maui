@@ -140,6 +140,15 @@ namespace Microsoft.Maui.Platform
 		// otherwise, false. Null means not yet determined.
 		bool? _scrollViewDescendant;
 
+		// Cached per-edge (Left=0, Top=1, Right=2, Bottom=3) result of whether an ancestor
+		// MauiView already applies a real, non-zero safe area inset for that edge. Reused
+		// across layout passes to avoid re-walking the ancestor chain (and the allocation that
+		// walk would otherwise require) on every LayoutSubviews call. Invalidated by the same
+		// events that previously invalidated the whole-view _parentHandlesSafeArea cache:
+		// SafeAreaInsetsDidChange, InvalidateSafeArea, and MovedToWindow.
+		readonly bool[] _blockedEdgesCache = new bool[4];
+		bool _blockedEdgesCacheValid;
+
 		// Indicates whether the measure invalidation has already been propagated
 		// to ancestors during this main loop.
 		bool _measureInvalidatedPropagated;
@@ -189,7 +198,7 @@ namespace Microsoft.Maui.Platform
 		/// Returns true if the view implements ISafeAreaView, doesn't ignore safe area,
 		/// and the current iOS version supports safe area insets.
 		/// </summary>
-		bool RespondsToSafeArea()
+		internal bool RespondsToSafeArea()
 		{
 			if (_scrollViewDescendant.HasValue)
 				return !_scrollViewDescendant.Value;
@@ -209,7 +218,7 @@ namespace Microsoft.Maui.Platform
 			return !_scrollViewDescendant.Value;
 		}
 
-		SafeAreaRegions GetSafeAreaRegionForEdge(int edge)
+		internal SafeAreaRegions GetSafeAreaRegionForEdge(int edge)
 		{
 			if (View is ISafeAreaView2 safeAreaPage)
 			{
@@ -281,7 +290,7 @@ namespace Microsoft.Maui.Platform
 		/// manual/forced layout of a child ahead of its parent), an ancestor's real inset could
 		/// be read as 0 (stale/default) and a double-padding regression could reappear.
 		/// </summary>
-		double GetSafeAreaComponentForEdge(int edge) => edge switch
+		internal double GetSafeAreaComponentForEdge(int edge) => edge switch
 		{
 			0 => _safeArea.Left,
 			1 => _safeArea.Top,
@@ -304,10 +313,17 @@ namespace Microsoft.Maui.Platform
 		/// the walk continues past it looking for an ancestor that blocks the remaining edges.
 		/// This is intentional (edges are resolved independently) and still bounded by tree
 		/// depth, but is a behavior change worth calling out.
+		///
+		/// The result is cached in <see cref="_blockedEdgesCache"/> until invalidated (see
+		/// SafeAreaInsetsDidChange/InvalidateSafeArea/MovedToWindow) so this walk only runs once
+		/// per invalidation cycle instead of on every LayoutSubviews call.
 		/// </summary>
-		void ResolveParentBlockedEdges(bool[] blockedEdges)
+		bool[] ResolveParentBlockedEdges()
 		{
-			Array.Clear(blockedEdges, 0, blockedEdges.Length);
+			if (_blockedEdgesCacheValid)
+				return _blockedEdgesCache;
+
+			Array.Clear(_blockedEdgesCache, 0, _blockedEdgesCache.Length);
 			int resolvedCount = 0;
 
 			this.FindParent(x =>
@@ -317,11 +333,11 @@ namespace Microsoft.Maui.Platform
 
 				for (int edge = 0; edge < 4; edge++)
 				{
-					if (!blockedEdges[edge] &&
+					if (!_blockedEdgesCache[edge] &&
 						mv.GetSafeAreaRegionForEdge(edge) != SafeAreaRegions.None &&
 						mv.GetSafeAreaComponentForEdge(edge) != 0)
 					{
-						blockedEdges[edge] = true;
+						_blockedEdgesCache[edge] = true;
 						resolvedCount++;
 					}
 				}
@@ -329,6 +345,9 @@ namespace Microsoft.Maui.Platform
 				// Stop walking once all 4 edges are resolved
 				return resolvedCount == 4;
 			});
+
+			_blockedEdgesCacheValid = true;
+			return _blockedEdgesCache;
 		}
 
 		/// <summary>
@@ -527,9 +546,9 @@ namespace Microsoft.Maui.Platform
 
 			if (View is ISafeAreaView2)
 			{
-				// Single ancestor walk resolves all 4 edges at once (performance optimization)
-				var blockedEdges = new bool[4];
-				ResolveParentBlockedEdges(blockedEdges);
+				// Single ancestor walk resolves all 4 edges at once, cached until invalidated
+				// (see ResolveParentBlockedEdges) to avoid re-walking on every layout pass.
+				var blockedEdges = ResolveParentBlockedEdges();
 
 				// Apply safe area selectively per edge based on SafeAreaRegions
 				var left = GetSafeAreaForEdge(baseSafeArea.Left, 0, blockedEdges[0]);
@@ -917,6 +936,7 @@ namespace Microsoft.Maui.Platform
 		public override void SafeAreaInsetsDidChange()
 		{
 			_safeAreaInvalidated = true;
+			_blockedEdgesCacheValid = false;
 			base.SafeAreaInsetsDidChange();
 		}
 
@@ -926,6 +946,7 @@ namespace Microsoft.Maui.Platform
 		internal void InvalidateSafeArea()
 		{
 			_safeAreaInvalidated = true;
+			_blockedEdgesCacheValid = false;
 			SetNeedsLayout();
 		}
 
@@ -938,6 +959,7 @@ namespace Microsoft.Maui.Platform
 			base.MovedToWindow();
 
 			_scrollViewDescendant = null;
+			_blockedEdgesCacheValid = false;
 
 			// Notify any subscribers that this view has been moved to a window
 			_movedToWindow?.Invoke(this, EventArgs.Empty);
