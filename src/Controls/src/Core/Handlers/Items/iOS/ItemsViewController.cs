@@ -539,7 +539,7 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			foreach (var measurementCell in _measurementCells.Values)
 			{
 				measurementCell.LayoutAttributesChanged -= CellLayoutAttributesChanged;
-				measurementCell.Unbind();
+				measurementCell.UnbindAndDisconnect();
 			}
 
 			_measurementCells.Clear();
