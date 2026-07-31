@@ -145,49 +145,6 @@ namespace Microsoft.Maui.Platform
 			_ => 0
 		};
 
-		/// <summary>
-		/// Performs a single ancestor walk to determine which edges are already handled by a
-		/// parent <see cref="MauiView"/> with a real, non-zero resolved inset. Mirrors
-		/// <see cref="MauiView.ResolveParentBlockedEdges"/> so that ScrollView descendants
-		/// get the same per-edge (rather than all-or-nothing) parent-blocking behavior — a parent
-		/// that only handles Top must not also suppress this scroll view's independent Bottom
-		/// inset, and vice versa (#34563).
-		///
-		/// The result is cached in <see cref="_blockedEdgesCache"/> until invalidated (see
-		/// SafeAreaInsetsDidChange/InvalidateSafeArea/MovedToWindow) so this walk only runs once
-		/// per invalidation cycle instead of on every LayoutSubviews call.
-		/// </summary>
-		bool[] ResolveParentBlockedEdges()
-		{
-			if (_blockedEdgesCacheValid)
-				return _blockedEdgesCache;
-
-			Array.Clear(_blockedEdgesCache, 0, _blockedEdgesCache.Length);
-			int resolvedCount = 0;
-
-			this.FindParent(x =>
-			{
-				if (x is not MauiView mv || !mv.RespondsToSafeArea())
-					return false;
-
-				for (int edge = 0; edge < 4; edge++)
-				{
-					if (!_blockedEdgesCache[edge] &&
-						mv.GetSafeAreaRegionForEdge(edge) != SafeAreaRegions.None &&
-						mv.GetSafeAreaComponentForEdge(edge) != 0)
-					{
-						_blockedEdgesCache[edge] = true;
-						resolvedCount++;
-					}
-				}
-
-				// Stop walking once all 4 edges are resolved
-				return resolvedCount == 4;
-			});
-
-			_blockedEdgesCacheValid = true;
-			return _blockedEdgesCache;
-		}
 
 		/// <summary>
 		/// Called by iOS when the adjusted content inset changes (e.g., when safe area changes).
@@ -262,8 +219,8 @@ namespace Microsoft.Maui.Platform
 			var safeAreaInsets = SafeAreaInsets;
 
 			// Single ancestor walk resolves all 4 edges at once, cached until invalidated
-			// (see ResolveParentBlockedEdges) to avoid re-walking on every layout pass.
-			var blockedEdges = ResolveParentBlockedEdges();
+			// (see SafeAreaInsetsExtensions.ResolveParentBlockedEdges) to avoid re-walking on every layout pass.
+			var blockedEdges = this.ResolveParentBlockedEdges(_blockedEdgesCache, ref _blockedEdgesCacheValid);
 
 			var manualInset = new UIEdgeInsets(
 					top: GetManualInsetForEdge(topRegion, safeAreaInsets.Top, blockedEdges[1]),

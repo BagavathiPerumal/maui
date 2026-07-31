@@ -285,7 +285,7 @@ namespace Microsoft.Maui.Platform
 		/// view's own <see cref="LayoutSubviews"/> (see the assignment below). Callers rely on
 		/// UIKit's top-down layout pass calling an ancestor's LayoutSubviews before its
 		/// descendants', so by the time a child resolves its own blocked edges via
-		/// <see cref="ResolveParentBlockedEdges"/>, each ancestor's <see cref="_safeArea"/> for
+		/// <see cref="SafeAreaInsetsExtensions.ResolveParentBlockedEdges"/>, each ancestor's <see cref="_safeArea"/> for
 		/// this pass has already been computed. If that ordering is ever violated (e.g. a
 		/// manual/forced layout of a child ahead of its parent), an ancestor's real inset could
 		/// be read as 0 (stale/default) and a double-padding regression could reappear.
@@ -298,57 +298,6 @@ namespace Microsoft.Maui.Platform
 			3 => _safeArea.Bottom,
 			_ => 0
 		};
-
-		/// <summary>
-		/// Performs a single ancestor walk to determine which edges are already handled by
-		/// a parent MauiView with a real, non-zero resolved inset. The old boolean
-		/// IsParentHandlingSafeArea() check was also a single FindParent walk (it just checked
-		/// all 4 edges with one shared boolean predicate) — the real improvement here is
-		/// per-edge granularity: each of the 4 edges is now tracked independently, so a parent
-		/// blocking only Top no longer prevents a child from independently applying Bottom.
-		///
-		/// Note: because the walk only stops once ALL 4 edges are resolved (rather than at the
-		/// nearest ancestor that handles safe area at all), it may walk further up the tree than
-		/// the old "nearest parent only" check did — e.g. if the nearest parent only blocks Top,
-		/// the walk continues past it looking for an ancestor that blocks the remaining edges.
-		/// This is intentional (edges are resolved independently) and still bounded by tree
-		/// depth, but is a behavior change worth calling out.
-		///
-		/// The result is cached in <see cref="_blockedEdgesCache"/> until invalidated (see
-		/// SafeAreaInsetsDidChange/InvalidateSafeArea/MovedToWindow) so this walk only runs once
-		/// per invalidation cycle instead of on every LayoutSubviews call.
-		/// </summary>
-		bool[] ResolveParentBlockedEdges()
-		{
-			if (_blockedEdgesCacheValid)
-				return _blockedEdgesCache;
-
-			Array.Clear(_blockedEdgesCache, 0, _blockedEdgesCache.Length);
-			int resolvedCount = 0;
-
-			this.FindParent(x =>
-			{
-				if (x is not MauiView mv || !mv.RespondsToSafeArea())
-					return false;
-
-				for (int edge = 0; edge < 4; edge++)
-				{
-					if (!_blockedEdgesCache[edge] &&
-						mv.GetSafeAreaRegionForEdge(edge) != SafeAreaRegions.None &&
-						mv.GetSafeAreaComponentForEdge(edge) != 0)
-					{
-						_blockedEdgesCache[edge] = true;
-						resolvedCount++;
-					}
-				}
-
-				// Stop walking once all 4 edges are resolved
-				return resolvedCount == 4;
-			});
-
-			_blockedEdgesCacheValid = true;
-			return _blockedEdgesCache;
-		}
 
 		/// <summary>
 		/// Adjusts the given bounds rectangle to account for safe area insets.
@@ -547,8 +496,8 @@ namespace Microsoft.Maui.Platform
 			if (View is ISafeAreaView2)
 			{
 				// Single ancestor walk resolves all 4 edges at once, cached until invalidated
-				// (see ResolveParentBlockedEdges) to avoid re-walking on every layout pass.
-				var blockedEdges = ResolveParentBlockedEdges();
+				// (see SafeAreaInsetsExtensions.ResolveParentBlockedEdges) to avoid re-walking on every layout pass.
+				var blockedEdges = this.ResolveParentBlockedEdges(_blockedEdgesCache, ref _blockedEdgesCacheValid);
 
 				// Apply safe area selectively per edge based on SafeAreaRegions
 				var left = GetSafeAreaForEdge(baseSafeArea.Left, 0, blockedEdges[0]);
