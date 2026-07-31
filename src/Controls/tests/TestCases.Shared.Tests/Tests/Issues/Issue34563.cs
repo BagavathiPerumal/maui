@@ -1,7 +1,4 @@
-// iOS only: this is a regression specific to iOS SafeAreaEdges handling when a Page's
-// Top and Bottom edges are configured differently (e.g. Top=None, Bottom=Container).
-// Android already handles this correctly per the reported issue.
-#if IOS
+#if IOS || ANDROID // SafeAreaEdges not supported on Catalyst and Windows
 using NUnit.Framework;
 using UITest.Appium;
 using UITest.Core;
