@@ -768,7 +768,6 @@ public class MemoryTests : ControlsHandlerTestBase
 		Assert.Equal(4, references.Count);
 		await AssertionExtensions.WaitForGC(references[2], references[3]);
 	}
-#if TEST_FAILS_ON_ANDROID && TESTS_FAILS_ON_WINDOWS && TESTS_FAILS_ON_IOS && TESTS_FAILS_ON_MACCATALYST //For more information, see: https://github.com/dotnet/maui/issues/35985
 	[Fact("Window Does Not Leak")]
 	public async Task WindowDoesNotLeak()
 	{
@@ -795,9 +794,13 @@ public class MemoryTests : ControlsHandlerTestBase
 			}
 		});
 
+		// Null the locals so they aren't hoisted into the async state machine and kept
+		// alive across the WaitForGC await below.
+		window = null;
+		page = null;
+
 		await AssertionExtensions.WaitForGC([.. references]);
 	}
-#endif
 
 	[Fact("VisualDiagnosticsOverlay Does Not Leak"
 #if IOS || MACCATALYST

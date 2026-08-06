@@ -11,6 +11,8 @@ namespace Microsoft.Maui.Controls.Platform
 	{
 		MultiPage<T> _page;
 		readonly IMauiContext _context;
+		bool _disposed;
+		bool _tearingDown;
 		List<AdapterItemKey> keys = new List<AdapterItemKey>();
 
 		public MultiPageFragmentStateAdapter(
@@ -21,14 +23,27 @@ namespace Microsoft.Maui.Controls.Platform
 			_context = context;
 		}
 
+		protected override void Dispose(bool disposing)
+		{
+			if (!_disposed)
+			{
+				_disposed = true;
+				if (disposing)
+				{
+					_page = null!;
+				}
+			}
+
+			base.Dispose(disposing);
+		}
+
 		public override int ItemCount => CountOverride;
 
 		public int CountOverride { get; set; }
 
 		public override Fragment CreateFragment(int position)
 		{
-			var fragment = FragmentContainer.CreateInstance(GetItemIdByPosition(position), _context);
-			return fragment;
+			return FragmentContainer.CreateInstance(GetItemIdByPosition(position), _context);
 		}
 
 		public override long GetItemId(int position)
@@ -38,7 +53,18 @@ namespace Microsoft.Maui.Controls.Platform
 
 		public override bool ContainsItem(long itemId)
 		{
+			if (_tearingDown)
+				return false;
+
 			return GetItemByItemId(itemId) != null;
+		}
+
+		internal void BeginTeardown()
+		{
+			_tearingDown = true;
+			CountOverride = 0;
+			keys.Clear();
+			NotifyDataSetChanged();
 		}
 
 		AdapterItemKey GetItemIdByPosition(int position)

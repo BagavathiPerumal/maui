@@ -126,9 +126,23 @@ public class TabbedPageManager
 			Element.Disappearing -= OnTabbedPageDisappearing;
 
 			RemoveTabs();
-			
+
+			// Defensively unsubscribe: SetTabLayout only unsubscribes once RootViewChanged fires,
+			// which may never happen if torn down first, otherwise leaking this manager.
+			_context.GetNavigationRootManager().RootViewChanged -= RootViewChanged;
+
 			_viewPager.LayoutChange -= OnLayoutChanged;
-			_viewPager.Adapter = null;
+
+			if (_viewPager.Adapter is MultiPageFragmentStateAdapter<Page> oldAdapter)
+			{
+				oldAdapter.BeginTeardown();
+				_viewPager.Adapter = null;
+				oldAdapter.Dispose();
+			}
+			else
+			{
+				_viewPager.Adapter = null;
+			}
 
 			if (_currentBarBackground is GradientBrush currentGradientBrush)
 			{
@@ -139,6 +153,9 @@ public class TabbedPageManager
 				currentGradientBrush.InvalidateGradientBrushRequested -= OnBarBackgroundChanged;
 			}
 			_currentBarBackground = null;
+
+			// Clear so this doesn't keep the old CurrentPage/TabbedPage reachable unnecessarily.
+			previousPage = null;
 		}
 
 		Element = tabbedPage;
@@ -318,6 +335,8 @@ public class TabbedPageManager
 
 		if (_context?.Context is Context c)
 		{
+			// If IsStateSaved, the returned IDisposable must be disposed to unregister the
+			// FragmentLifecycleCallbacks, otherwise this manager stays rooted indefinitely.
 			_pendingFragment =
 				rootManager
 					.FragmentManager
