@@ -54,7 +54,9 @@ namespace Microsoft.Maui.Controls.Platform
 		public override bool ContainsItem(long itemId)
 		{
 			if (_tearingDown)
+			{
 				return false;
+			}
 
 			return GetItemByItemId(itemId) != null;
 		}
