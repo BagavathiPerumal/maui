@@ -43,11 +43,25 @@ namespace Microsoft.Maui.Controls.Platform
 
 		public override Fragment CreateFragment(int position)
 		{
+			// Guard against a pending RecyclerView layout pass calling CreateFragment after
+			// BeginTeardown() reported zero items but before that update has been processed,
+			// which would otherwise dereference a disposed/null _page.
+			if (_tearingDown || _page is null)
+			{
+				return new Fragment();
+			}
+
 			return FragmentContainer.CreateInstance(GetItemIdByPosition(position), _context);
 		}
 
 		public override long GetItemId(int position)
 		{
+			if (_tearingDown || _page is null)
+			{
+				// -1 matches AndroidX RecyclerView.NO_ID.
+				return -1L;
+			}
+
 			return GetItemIdByPosition(position).ItemId;
 		}
 

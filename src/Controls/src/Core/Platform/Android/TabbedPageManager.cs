@@ -135,6 +135,9 @@ public class TabbedPageManager
 
 			if (_viewPager.Adapter is MultiPageFragmentStateAdapter<Page> oldAdapter)
 			{
+				// Order matters: BeginTeardown() first so ContainsItem/CreateFragment/GetItemId
+				// treat this adapter as empty; clearing Adapter afterward cancels any pending
+				// layout still in flight from NotifyDataSetChanged() before Dispose() runs.
 				oldAdapter.BeginTeardown();
 				_viewPager.Adapter = null;
 				oldAdapter.Dispose();
