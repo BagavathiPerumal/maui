@@ -768,13 +768,23 @@ public class MemoryTests : ControlsHandlerTestBase
 		Assert.Equal(4, references.Count);
 		await AssertionExtensions.WaitForGC(references[2], references[3]);
 	}
+
 	[Fact("Window Does Not Leak")]
 	public async Task WindowDoesNotLeak()
 	{
 		SetupBuilder();
 
-		var references = new List<WeakReference>();
+		var references = await CreateWindowLeakReferencesAsync();
 
+		await AssertionExtensions.WaitForGC([.. references]);
+	}
+
+	// Extracted into a non-inlineable method so the `window`/`page` locals aren't hoisted into the
+	// caller's async state machine, which could keep them rooted past the WaitForGC await below.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	async Task<List<WeakReference>> CreateWindowLeakReferencesAsync()
+	{
+		var references = new List<WeakReference>();
 
 		var page = new ContentPage();
 		var window = new Window(page);
@@ -794,12 +804,7 @@ public class MemoryTests : ControlsHandlerTestBase
 			}
 		});
 
-		// Null the locals so they aren't hoisted into the async state machine and kept
-		// alive across the WaitForGC await below.
-		window = null;
-		page = null;
-
-		await AssertionExtensions.WaitForGC([.. references]);
+		return references;
 	}
 
 	[Fact("VisualDiagnosticsOverlay Does Not Leak"
