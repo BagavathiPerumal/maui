@@ -497,11 +497,13 @@ namespace Microsoft.Maui.Platform
 					height = Bounds.Height + 1;
 				}
 			}
-			else if (ContentInsetAdjustmentBehavior != UIScrollViewContentInsetAdjustmentBehavior.Automatic)
+			else if (SystemAdjustedContentInset == UIEdgeInsets.Zero || ContentInsetAdjustmentBehavior == UIScrollViewContentInsetAdjustmentBehavior.Never)
 			{
+				// No active system inset; the content size must be padded manually.
 				width += _safeArea.HorizontalThickness;
 				height += _safeArea.VerticalThickness;
 			}
+			// else: UIKit already reserves the safe area via AdjustedContentInset - don't double it here.
 
 			contentSize = new Size(width, height);
 
