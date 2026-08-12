@@ -74,7 +74,7 @@ namespace Microsoft.Maui.Platform
 		// walk would otherwise require) on every LayoutSubviews call. Invalidated by the same
 		// events that previously invalidated the whole-view _parentHandlesSafeArea cache:
 		// SafeAreaInsetsDidChange, InvalidateSafeArea, and MovedToWindow.
-		readonly bool[] _blockedEdgesCache = new bool[4];
+		int _blockedEdgesCache;
 		bool _blockedEdgesCacheValid;
 
 		/// <summary>
@@ -126,7 +126,7 @@ namespace Microsoft.Maui.Platform
 		/// as nested scroll views should not apply their own safe area adjustments.
 		/// </summary>
 		/// <returns>True if this scroll view should apply safe area adjustments, false otherwise.</returns>
-		bool RespondsToSafeArea()
+		internal bool RespondsToSafeArea()
 		{
 			return !(_scrollViewDescendant ??= Superview.GetParentOfType<UIScrollView>() is not null);
 		}
@@ -136,7 +136,7 @@ namespace Microsoft.Maui.Platform
 		/// (Left=0, Top=1, Right=2, Bottom=3), used by descendants (or, in principle, callers)
 		/// to determine whether this view has a real, non-zero inset for a specific edge.
 		/// </summary>
-		double GetSafeAreaComponentForEdge(int edge) => edge switch
+		internal double GetSafeAreaComponentForEdge(int edge) => edge switch
 		{
 			0 => _safeArea.Left,
 			1 => _safeArea.Top,
@@ -212,7 +212,7 @@ namespace Microsoft.Maui.Platform
 			set => _reference = value == null ? null : new(value);
 		}
 
-		SafeAreaRegions GetSafeAreaRegionForEdge(int edge)
+		internal SafeAreaRegions GetSafeAreaRegionForEdge(int edge)
 		{
 			if (View is ISafeAreaView2 safeAreaPage)
 			{
@@ -242,13 +242,13 @@ namespace Microsoft.Maui.Platform
 
 			// Single ancestor walk resolves all 4 edges at once, cached until invalidated
 			// (see SafeAreaInsetsExtensions.ResolveParentBlockedEdges) to avoid re-walking on every layout pass.
-			var blockedEdges = this.ResolveParentBlockedEdges(_blockedEdgesCache, ref _blockedEdgesCacheValid);
+			var blockedEdges = this.ResolveParentBlockedEdges(ref _blockedEdgesCache, ref _blockedEdgesCacheValid);
 
 			var manualInset = new UIEdgeInsets(
-					top: GetManualInsetForEdge(topRegion, sourceInsets.Top, blockedEdges[1]),
-					left: GetManualInsetForEdge(leftRegion, sourceInsets.Left, blockedEdges[0]),
-					bottom: GetManualInsetForEdge(bottomRegion, sourceInsets.Bottom, blockedEdges[3]),
-					right: GetManualInsetForEdge(rightRegion, sourceInsets.Right, blockedEdges[2])
+					top: GetManualInsetForEdge(topRegion, sourceInsets.Top, blockedEdges.IsEdgeBlocked(1)),
+					left: GetManualInsetForEdge(leftRegion, sourceInsets.Left, blockedEdges.IsEdgeBlocked(0)),
+					bottom: GetManualInsetForEdge(bottomRegion, sourceInsets.Bottom, blockedEdges.IsEdgeBlocked(3)),
+					right: GetManualInsetForEdge(rightRegion, sourceInsets.Right, blockedEdges.IsEdgeBlocked(2))
 				);
 
 			return manualInset;
@@ -447,17 +447,20 @@ namespace Microsoft.Maui.Platform
 			//   Always : UIKit manages ALL edges in AdjustedContentInset → use SACI for all edges
 			//     to avoid double-applying horizontal safe area that UIKit already handles.
 			//
-			// GetInset() is called with SafeAreaInsets as the source so that per-edge
-			// ancestor-blocking (#33595, #32586, #34563) is applied to the raw device insets,
-			// consistent with the manual (mixed-edge) path above.
+			// GetInset() applies per-edge ancestor-blocking to the raw device insets (the
+			// MAUI-owned path). The same resolved blocked-edges bitmask is also passed into
+			// ComputeSafeArea() so the UIKit-sourced (ACI) edges in the Always/Automatic branches
+			// get the same treatment — an ancestor that already claims an edge must not have it
+			// re-applied here either (discussion_r3707278399).
 			var aci = SystemAdjustedContentInset;
 			var isHorizontalScrollInValidate = View is IScrollView { Orientation: ScrollOrientation.Horizontal or ScrollOrientation.Both };
-			_safeArea = ComputeSafeArea(aci, ContentInsetAdjustmentBehavior, GetInset(SafeAreaInsets), isHorizontalScrollInValidate);
+			var deviceInset = GetInset(SafeAreaInsets);
+			var blockedEdgesForCompute = this.ResolveParentBlockedEdges(ref _blockedEdgesCache, ref _blockedEdgesCacheValid);
+			_safeArea = ComputeSafeArea(aci, ContentInsetAdjustmentBehavior, deviceInset, isHorizontalScrollInValidate, blockedEdgesForCompute);
 
 			var oldApplyingSafeAreaAdjustments = _appliesSafeAreaAdjustments;
-			// Parent-edge blocking is now resolved per-edge inline while computing GetInset() above
-			// (see ResolveParentBlockedEdges/GetManualInsetForEdge) for BOTH the manual (mixed-edge)
-			// path and the uniform-edge native path (SystemAdjustedContentInset), so _safeArea
+			// Parent-edge blocking is resolved per-edge inline while computing GetInset() above and
+			// is also threaded into ComputeSafeArea() for the UIKit-owned (ACI) edges, so _safeArea
 			// already reflects the net, post-ancestor-arbitration state either way — no separate
 			// whole-view parent check is needed.
 			_appliesSafeAreaAdjustments = RespondsToSafeArea() && !_safeArea.IsEmpty;
@@ -590,12 +593,24 @@ namespace Microsoft.Maui.Platform
 		/// True when the scroll view scrolls horizontally (Horizontal or Both orientation).
 		/// UIKit's Automatic mode includes L/R in ACI for horizontal scroll views, but only T/B for vertical ones.
 		/// </param>
+		/// <param name="blockedEdges">
+		/// Bitmask (bit 0=Left, 1=Top, 2=Right, 3=Bottom) of ancestor-blocked edges from
+		/// <see cref="SafeAreaInsetsExtensions.ResolveParentBlockedEdges"/>. An edge already claimed
+		/// by an ancestor with a real, non-zero inset is suppressed here to avoid double-applying it
+		/// (the original regression this guards against: discussion_r3707278399). Suppressing an
+		/// edge here only stops MAUI's own layout compensation for that edge — it does not alter
+		/// what UIKit itself has already applied via <see cref="UIScrollView.AdjustedContentInset"/>.
+		/// In the common case an ancestor that reserves real space also shifts this view's frame out
+		/// of the unsafe area, so UIKit's own ACI for that edge is already 0 and this is a no-op; the
+		/// suppression exists as a defensive backstop for cases where it isn't.
+		/// </param>
 		/// <returns>The safe-area padding to apply to the MAUI layout.</returns>
 		internal static SafeAreaPadding ComputeSafeArea(
 			UIEdgeInsets aci,
 			UIScrollViewContentInsetAdjustmentBehavior ciab,
 			UIEdgeInsets deviceInset,
-			bool isHorizontalScroll = false)
+			bool isHorizontalScroll = false,
+			int blockedEdges = 0)
 		{
 			if (ciab == UIScrollViewContentInsetAdjustmentBehavior.Never
 				|| aci == UIEdgeInsets.Zero)
@@ -606,8 +621,14 @@ namespace Microsoft.Maui.Platform
 
 			if (ciab == UIScrollViewContentInsetAdjustmentBehavior.Always)
 			{
-				// UIKit manages ALL edges in ACI — use SACI to stay in sync with UIKit's model.
-				return aci.ToSafeAreaInsets();
+				// UIKit manages ALL edges in ACI — use SACI to stay in sync with UIKit's model,
+				// but still defer to an ancestor that already claims a given edge.
+				var uniform = aci.ToSafeAreaInsets();
+				return new SafeAreaPadding(
+					Left:   blockedEdges.IsEdgeBlocked(0) ? 0 : uniform.Left,
+					Top:    blockedEdges.IsEdgeBlocked(1) ? 0 : uniform.Top,
+					Right:  blockedEdges.IsEdgeBlocked(2) ? 0 : uniform.Right,
+					Bottom: blockedEdges.IsEdgeBlocked(3) ? 0 : uniform.Bottom);
 			}
 
 			// Automatic: UIKit ownership depends on scroll orientation.
@@ -620,8 +641,8 @@ namespace Microsoft.Maui.Platform
 			{
 				// Horizontal scroll: UIKit includes L/R in ACI; MAUI must supply T/B from device insets.
 				return new SafeAreaPadding(
-					Left:   normAci.Left,
-					Right:  normAci.Right,
+					Left:   blockedEdges.IsEdgeBlocked(0) ? 0 : normAci.Left,
+					Right:  blockedEdges.IsEdgeBlocked(2) ? 0 : normAci.Right,
 					Top:    normDevice.Top,
 					Bottom: normDevice.Bottom);
 			}
@@ -631,8 +652,8 @@ namespace Microsoft.Maui.Platform
 			return new SafeAreaPadding(
 				Left:   normDevice.Left,
 				Right:  normDevice.Right,
-				Top:    normAci.Top,
-				Bottom: normAci.Bottom);
+				Top:    blockedEdges.IsEdgeBlocked(1) ? 0 : normAci.Top,
+				Bottom: blockedEdges.IsEdgeBlocked(3) ? 0 : normAci.Bottom);
 		}
 
 		/// <summary>

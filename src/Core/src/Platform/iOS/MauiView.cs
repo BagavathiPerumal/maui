@@ -146,7 +146,7 @@ namespace Microsoft.Maui.Platform
 		// walk would otherwise require) on every LayoutSubviews call. Invalidated by the same
 		// events that previously invalidated the whole-view _parentHandlesSafeArea cache:
 		// SafeAreaInsetsDidChange, InvalidateSafeArea, and MovedToWindow.
-		readonly bool[] _blockedEdgesCache = new bool[4];
+		int _blockedEdgesCache;
 		bool _blockedEdgesCacheValid;
 
 		// Indicates whether the measure invalidation has already been propagated
@@ -499,13 +499,13 @@ namespace Microsoft.Maui.Platform
 			{
 				// Single ancestor walk resolves all 4 edges at once, cached until invalidated
 				// (see SafeAreaInsetsExtensions.ResolveParentBlockedEdges) to avoid re-walking on every layout pass.
-				var blockedEdges = this.ResolveParentBlockedEdges(_blockedEdgesCache, ref _blockedEdgesCacheValid);
+				var blockedEdges = this.ResolveParentBlockedEdges(ref _blockedEdgesCache, ref _blockedEdgesCacheValid);
 
 				// Apply safe area selectively per edge based on SafeAreaRegions
-				var left = GetSafeAreaForEdge(baseSafeArea.Left, 0, blockedEdges[0]);
-				var top = GetSafeAreaForEdge(baseSafeArea.Top, 1, blockedEdges[1]);
-				var right = GetSafeAreaForEdge(baseSafeArea.Right, 2, blockedEdges[2]);
-				var bottom = GetSafeAreaForEdge(baseSafeArea.Bottom, 3, blockedEdges[3]);
+				var left = GetSafeAreaForEdge(baseSafeArea.Left, 0, blockedEdges.IsEdgeBlocked(0));
+				var top = GetSafeAreaForEdge(baseSafeArea.Top, 1, blockedEdges.IsEdgeBlocked(1));
+				var right = GetSafeAreaForEdge(baseSafeArea.Right, 2, blockedEdges.IsEdgeBlocked(2));
+				var bottom = GetSafeAreaForEdge(baseSafeArea.Bottom, 3, blockedEdges.IsEdgeBlocked(3));
 
 				return new SafeAreaPadding(left, right, top, bottom);
 			}
