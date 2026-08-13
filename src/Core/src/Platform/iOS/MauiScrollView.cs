@@ -68,13 +68,16 @@ namespace Microsoft.Maui.Platform
 		/// </summary>
 		bool _safeAreaInvalidated = true;
 
-		// Cached per-edge (Left=0, Top=1, Right=2, Bottom=3) result of whether an ancestor
-		// MauiView already applies a real, non-zero safe area inset for that edge. Reused
-		// across layout passes to avoid re-walking the ancestor chain (and the allocation that
-		// walk would otherwise require) on every LayoutSubviews call. Invalidated by the same
-		// events that previously invalidated the whole-view _parentHandlesSafeArea cache:
-		// SafeAreaInsetsDidChange, InvalidateSafeArea, and MovedToWindow.
-		readonly bool[] _blockedEdgesCache = new bool[4];
+		// Cached packed bitmask (bit N set = edge N blocked; Left=0, Top=1, Right=2, Bottom=3) of
+		// whether an ancestor MauiView/MauiScrollView already applies a real, non-zero safe area
+		// inset for that edge. A packed int avoids the per-instance bool[4] heap allocation this
+		// used to require (notably for recycled views like CollectionView cells). Reused across
+		// layout passes to avoid re-walking the ancestor chain on every LayoutSubviews call.
+		// Invalidated by the same events that previously invalidated the whole-view
+		// _parentHandlesSafeArea cache: SafeAreaInsetsDidChange, InvalidateSafeArea, and
+		// MovedToWindow — plus automatically left invalid whenever a blocking ancestor uses
+		// SafeAreaRegions.SoftInput, since that can change without any of those events firing.
+		int _blockedEdgesCache;
 		bool _blockedEdgesCacheValid;
 
 		/// <summary>
@@ -124,19 +127,24 @@ namespace Microsoft.Maui.Platform
 		/// Determines whether this scroll view should respond to safe area changes.
 		/// Returns false if this scroll view is nested within another scroll view,
 		/// as nested scroll views should not apply their own safe area adjustments.
+		/// Internal so the shared ancestor-walk in <see cref="SafeAreaInsetsExtensions.ResolveParentBlockedEdges"/>
+		/// can recognize a <see cref="MauiScrollView"/> ancestor, not just a <see cref="MauiView"/> one.
 		/// </summary>
 		/// <returns>True if this scroll view should apply safe area adjustments, false otherwise.</returns>
-		bool RespondsToSafeArea()
+		internal bool RespondsToSafeArea()
 		{
 			return !(_scrollViewDescendant ??= Superview.GetParentOfType<UIScrollView>() is not null);
 		}
 
 		/// <summary>
 		/// Returns this scroll view's own, already-resolved safe area component for the given edge
-		/// (Left=0, Top=1, Right=2, Bottom=3), used by descendants (or, in principle, callers)
-		/// to determine whether this view has a real, non-zero inset for a specific edge.
+		/// (Left=0, Top=1, Right=2, Bottom=3). Used by the ancestor walk in
+		/// <see cref="SafeAreaInsetsExtensions.ResolveParentBlockedEdges"/> to determine whether a
+		/// descendant should defer to a <see cref="MauiScrollView"/> ancestor that already has a
+		/// real, non-zero inset for a specific edge, preventing a descendant from re-applying the
+		/// same edge (double-padding).
 		/// </summary>
-		double GetSafeAreaComponentForEdge(int edge) => edge switch
+		internal double GetSafeAreaComponentForEdge(int edge) => edge switch
 		{
 			0 => _safeArea.Left,
 			1 => _safeArea.Top,
@@ -197,7 +205,7 @@ namespace Microsoft.Maui.Platform
 			set => _reference = value == null ? null : new(value);
 		}
 
-		SafeAreaRegions GetSafeAreaRegionForEdge(int edge)
+		internal SafeAreaRegions GetSafeAreaRegionForEdge(int edge)
 		{
 			if (View is ISafeAreaView2 safeAreaPage)
 			{
@@ -216,6 +224,17 @@ namespace Microsoft.Maui.Platform
 		/// <paramref name="sourceInsets"/> is <see cref="SystemAdjustedContentInset"/> — so both
 		/// paths get identical per-edge ancestor-blocking behavior and neither can double-apply
 		/// an inset a parent already handles (#33595, #32586, #34563).
+		///
+		/// Note on the native path: when <paramref name="sourceInsets"/> is
+		/// <see cref="SystemAdjustedContentInset"/>, UIKit has already computed and will apply its
+		/// own <c>adjustedContentInset</c> to the scroll content regardless of what we do here —
+		/// suppressing a blocked edge only stops MAUI's own <c>_safeArea</c> compensation, it does
+		/// not undo UIKit's applied inset. In the common case this is still correct because an
+		/// ancestor MauiView/MauiScrollView genuinely owning an edge means UIKit's own
+		/// AdjustedContentInset for that edge is typically already 0 (the ancestor already
+		/// consumed the safe area, so there's nothing left for UIKit to add here). The suppression
+		/// is kept as a defensive backstop for layouts we can't fully rule out, rather than
+		/// removed outright, since removing it previously reopened a double-padding regression.
 		/// </summary>
 		UIEdgeInsets GetInset(UIEdgeInsets sourceInsets)
 		{
@@ -226,13 +245,13 @@ namespace Microsoft.Maui.Platform
 
 			// Single ancestor walk resolves all 4 edges at once, cached until invalidated
 			// (see SafeAreaInsetsExtensions.ResolveParentBlockedEdges) to avoid re-walking on every layout pass.
-			var blockedEdges = this.ResolveParentBlockedEdges(_blockedEdgesCache, ref _blockedEdgesCacheValid);
+			var blockedEdges = this.ResolveParentBlockedEdges(ref _blockedEdgesCache, ref _blockedEdgesCacheValid);
 
 			var manualInset = new UIEdgeInsets(
-					top: GetManualInsetForEdge(topRegion, sourceInsets.Top, blockedEdges[1]),
-					left: GetManualInsetForEdge(leftRegion, sourceInsets.Left, blockedEdges[0]),
-					bottom: GetManualInsetForEdge(bottomRegion, sourceInsets.Bottom, blockedEdges[3]),
-					right: GetManualInsetForEdge(rightRegion, sourceInsets.Right, blockedEdges[2])
+					top: GetManualInsetForEdge(topRegion, sourceInsets.Top, blockedEdges.IsEdgeBlocked(1)),
+					left: GetManualInsetForEdge(leftRegion, sourceInsets.Left, blockedEdges.IsEdgeBlocked(0)),
+					bottom: GetManualInsetForEdge(bottomRegion, sourceInsets.Bottom, blockedEdges.IsEdgeBlocked(3)),
+					right: GetManualInsetForEdge(rightRegion, sourceInsets.Right, blockedEdges.IsEdgeBlocked(2))
 				);
 
 			return manualInset;

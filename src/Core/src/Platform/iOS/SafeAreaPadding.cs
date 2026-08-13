@@ -65,45 +65,104 @@ internal static class SafeAreaInsetsExtensions
 	}
 
 	/// <summary>
+	/// Returns whether <paramref name="edge"/> (0=Left, 1=Top, 2=Right, 3=Bottom) is set in the
+	/// packed bitmask produced by <see cref="ResolveParentBlockedEdges"/>.
+	/// </summary>
+	public static bool IsEdgeBlocked(this int blockedEdges, int edge) => (blockedEdges & (1 << edge)) != 0;
+
+	/// <summary>
 	/// Returns which edges (0=Left, 1=Top, 2=Right, 3=Bottom) are already handled by a parent
-	/// <see cref="MauiView"/> with a real, non-zero resolved inset, performing a single ancestor
-	/// walk only when <paramref name="blockedEdgesCacheValid"/> is false. Shared by
-	/// <see cref="MauiView"/> and <see cref="MauiScrollView"/> so both get identical per-edge
-	/// (rather than all-or-nothing) parent-blocking behavior — a parent that only handles Top
-	/// must not also suppress a descendant's independent Bottom inset, and vice versa (#34563).
+	/// <see cref="MauiView"/> or <see cref="MauiScrollView"/> with a real, non-zero resolved
+	/// inset, performing a single ancestor walk only when <paramref name="blockedEdgesCacheValid"/>
+	/// is false. Shared by <see cref="MauiView"/> and <see cref="MauiScrollView"/> so both get
+	/// identical per-edge (rather than all-or-nothing) parent-blocking behavior — a parent that
+	/// only handles Top must not also suppress a descendant's independent Bottom inset, and vice
+	/// versa (#34563). A <see cref="MauiScrollView"/> ancestor is recognized too, so a ScrollView
+	/// that already applies its own safe area inset for an edge blocks a descendant from
+	/// re-applying that same edge.
 	///
-	/// The result is written into the caller-owned <paramref name="blockedEdges"/> array and
-	/// reused across layout passes via <paramref name="blockedEdgesCacheValid"/> until the
-	/// caller invalidates it (e.g. on SafeAreaInsetsDidChange/InvalidateSafeArea/MovedToWindow),
-	/// so this walk only runs once per invalidation cycle instead of on every layout pass.
+	/// The result is a packed bitmask (bit N set = edge N is blocked) written into the
+	/// caller-owned <paramref name="blockedEdgesCache"/> field, avoiding the per-instance
+	/// <c>bool[4]</c> heap allocation this used to require (notably for recycled views such as
+	/// <c>CollectionView</c> cells). It's reused across layout passes via
+	/// <paramref name="blockedEdgesCacheValid"/> until the caller invalidates it (e.g. on
+	/// SafeAreaInsetsDidChange/InvalidateSafeArea/MovedToWindow), so this walk only runs once per
+	/// invalidation cycle instead of on every layout pass — EXCEPT when a blocking ancestor's edge
+	/// uses <see cref="SafeAreaRegions.SoftInput"/>: that region's resolved inset can change at
+	/// runtime (keyboard show/hide) without firing any of those invalidation events, so in that
+	/// case the cache is deliberately left invalid and this walk re-runs on every call.
 	/// </summary>
 	/// <param name="startingView">The view whose ancestors should be walked.</param>
-	/// <param name="blockedEdges">A caller-owned, length-4 array to populate in place.</param>
+	/// <param name="blockedEdgesCache">A caller-owned bitmask field to populate.</param>
 	/// <param name="blockedEdgesCacheValid">
-	/// Whether <paramref name="blockedEdges"/> already holds a valid result. Set to true before
-	/// returning.
+	/// Whether <paramref name="blockedEdgesCache"/> already holds a valid result. Set to true
+	/// before returning, unless a SoftInput-blocking ancestor was found.
 	/// </param>
-	internal static bool[] ResolveParentBlockedEdges(this UIView startingView, bool[] blockedEdges, ref bool blockedEdgesCacheValid)
+	internal static int ResolveParentBlockedEdges(this UIView startingView, ref int blockedEdgesCache, ref bool blockedEdgesCacheValid)
 	{
 		if (blockedEdgesCacheValid)
-			return blockedEdges;
+		{
+			return blockedEdgesCache;
+		}
 
-		Array.Clear(blockedEdges, 0, blockedEdges.Length);
+		int blockedEdges = 0;
 		int resolvedCount = 0;
+		bool hasSoftInputRegion = false;
 
 		startingView.FindParent(x =>
 		{
-			if (x is not MauiView mv || !mv.RespondsToSafeArea())
+			bool responds;
+
+			if (x is MauiView outerMv)
+			{
+				responds = outerMv.RespondsToSafeArea();
+			}
+			else if (x is MauiScrollView outerMsv)
+			{
+				responds = outerMsv.RespondsToSafeArea();
+			}
+			else
+			{
 				return false;
+			}
+
+			if (!responds)
+			{
+				return false;
+			}
 
 			for (int edge = 0; edge < 4; edge++)
 			{
-				if (!blockedEdges[edge] &&
-					mv.GetSafeAreaRegionForEdge(edge) != SafeAreaRegions.None &&
-					mv.GetSafeAreaComponentForEdge(edge) != 0)
+				int bit = 1 << edge;
+				if ((blockedEdges & bit) != 0)
 				{
-					blockedEdges[edge] = true;
+					continue;
+				}
+
+				SafeAreaRegions region;
+				double component;
+
+				if (x is MauiView mv)
+				{
+					region = mv.GetSafeAreaRegionForEdge(edge);
+					component = mv.GetSafeAreaComponentForEdge(edge);
+				}
+				else
+				{
+					var msv = (MauiScrollView)x;
+					region = msv.GetSafeAreaRegionForEdge(edge);
+					component = msv.GetSafeAreaComponentForEdge(edge);
+				}
+
+				if (region != SafeAreaRegions.None && component != 0)
+				{
+					blockedEdges |= bit;
 					resolvedCount++;
+
+					if (SafeAreaEdges.IsSoftInput(region))
+					{
+						hasSoftInputRegion = true;
+					}
 				}
 			}
 
@@ -111,7 +170,13 @@ internal static class SafeAreaInsetsExtensions
 			return resolvedCount == 4;
 		});
 
-		blockedEdgesCacheValid = true;
+		blockedEdgesCache = blockedEdges;
+
+		// SoftInput can change (keyboard show/hide) without firing any of the invalidation
+		// events that normally invalidate this cache, so never mark it valid in that case —
+		// forcing a fresh ancestor walk on every subsequent call for these descendants.
+		blockedEdgesCacheValid = !hasSoftInputRegion;
+
 		return blockedEdges;
 	}
 }
