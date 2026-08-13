@@ -44,23 +44,28 @@ namespace Microsoft.Maui
 				viewToDisconnect.Handler?.DisconnectHandler();
 			}
 
-			void BuildFlatList(IView view, List<IView> flatList)
+			// Some IVisualTreeElement nodes (e.g. Shell's ShellItem/ShellSection) don't
+			// themselves implement IView, so they can't be added to the flat list or have
+			// their handler disconnected. But their descendants can still be IView (e.g. the
+			// pages hosted inside a Shell), so traversal must continue through them instead
+			// of stopping once a non-IView node is reached.
+			static void BuildFlatList(object element, List<IView> flatList)
 			{
-				if (view is IHandlerDisconnectPolicies HandlerPropertiess && HandlerPropertiess.DisconnectPolicy == HandlerDisconnectPolicy.Manual)
+				if (element is IHandlerDisconnectPolicies handlerProperties && handlerProperties.DisconnectPolicy == HandlerDisconnectPolicy.Manual)
 				{
 					return;
 				}
 
-				flatList.Add(view);
+				if (element is IView elementView)
+				{
+					flatList.Add(elementView);
+				}
 
-				if (view is IVisualTreeElement vte)
+				if (element is IVisualTreeElement vte)
 				{
 					foreach (var child in vte.GetVisualChildren())
 					{
-						if (child is IView childView)
-						{
-							BuildFlatList(childView, flatList);
-						}
+						BuildFlatList(child, flatList);
 					}
 				}
 			}
