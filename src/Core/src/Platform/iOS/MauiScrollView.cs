@@ -137,21 +137,36 @@ namespace Microsoft.Maui.Platform
 		}
 
 		/// <summary>
-		/// Returns this scroll view's own, already-resolved safe area component for the given edge
-		/// (Left=0, Top=1, Right=2, Bottom=3). Used by the ancestor walk in
+		/// Returns this scroll view's raw, always-live safe area component for the given edge
+		/// (Left=0, Top=1, Right=2, Bottom=3), sourced directly from UIKit (<c>SafeAreaInsets</c>
+		/// or <see cref="SystemAdjustedContentInset"/>, matching whichever this view would actually
+		/// apply — see <see cref="ValidateSafeArea"/>). Used by the ancestor walk in
 		/// <see cref="SafeAreaInsetsExtensions.ResolveParentBlockedEdges"/> to determine whether a
 		/// descendant should defer to a <see cref="MauiScrollView"/> ancestor that already has a
 		/// real, non-zero inset for a specific edge, preventing a descendant from re-applying the
 		/// same edge (double-padding).
+		///
+		/// Unlike a cached/resolved value, this is safe to call at ANY point during a layout pass —
+		/// it does not depend on this scroll view's own <see cref="ValidateSafeArea"/> having already
+		/// run this pass, so the very first layout pass resolves correctly instead of reading a
+		/// stale/default 0.
 		/// </summary>
-		internal double GetSafeAreaComponentForEdge(int edge) => edge switch
+		internal double GetRawSafeAreaComponentForEdge(int edge)
 		{
-			0 => _safeArea.Left,
-			1 => _safeArea.Top,
-			2 => _safeArea.Right,
-			3 => _safeArea.Bottom,
-			_ => 0
-		};
+			var insets = (SystemAdjustedContentInset == UIEdgeInsets.Zero
+				|| ContentInsetAdjustmentBehavior == UIScrollViewContentInsetAdjustmentBehavior.Never)
+				? SafeAreaInsets
+				: SystemAdjustedContentInset;
+
+			return edge switch
+			{
+				0 => insets.Left,
+				1 => insets.Top,
+				2 => insets.Right,
+				3 => insets.Bottom,
+				_ => 0
+			};
+		}
 
 
 		/// <summary>

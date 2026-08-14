@@ -280,25 +280,22 @@ namespace Microsoft.Maui.Platform
 		}
 
 		/// <summary>
-		/// Returns this view's own, already-resolved safe area component for the given edge
-		/// (Left=0, Top=1, Right=2, Bottom=3). Reflects the ACTUAL inset this view will apply,
-		/// after its own ancestor-blocking has already been factored in.
+		/// Returns this view's raw, always-live safe area component for the given edge
+		/// (Left=0, Top=1, Right=2, Bottom=3), sourced directly from UIKit's <c>SafeAreaInsets</c>.
 		///
-		/// IMPORTANT: this reads <see cref="_safeArea"/>, which is only refreshed inside this
-		/// view's own <see cref="LayoutSubviews"/> (see the assignment below). Callers rely on
-		/// UIKit's top-down layout pass calling an ancestor's LayoutSubviews before its
-		/// descendants', so by the time a child resolves its own blocked edges via
-		/// <see cref="SafeAreaInsetsExtensions.ResolveParentBlockedEdges"/>, each ancestor's <see cref="_safeArea"/> for
-		/// this pass has already been computed. If that ordering is ever violated (e.g. a
-		/// manual/forced layout of a child ahead of its parent), an ancestor's real inset could
-		/// be read as 0 (stale/default) and a double-padding regression could reappear.
+		/// Unlike a cached/resolved value, this is safe to call on an ancestor at ANY point during
+		/// a layout pass — it does not depend on that ancestor's own <see cref="LayoutSubviews"/>
+		/// having already run this pass. This is what <see cref="SafeAreaInsetsExtensions.ResolveParentBlockedEdges"/>
+		/// uses to decide whether an ancestor already claims a given edge, so the very first layout
+		/// pass (before any ancestor's cache has been populated) resolves correctly instead of
+		/// reading a stale/default 0 and risking a double-padding regression.
 		/// </summary>
-		internal double GetSafeAreaComponentForEdge(int edge) => edge switch
+		internal double GetRawSafeAreaComponentForEdge(int edge) => edge switch
 		{
-			0 => _safeArea.Left,
-			1 => _safeArea.Top,
-			2 => _safeArea.Right,
-			3 => _safeArea.Bottom,
+			0 => SafeAreaInsets.Left,
+			1 => SafeAreaInsets.Top,
+			2 => SafeAreaInsets.Right,
+			3 => SafeAreaInsets.Bottom,
 			_ => 0
 		};
 

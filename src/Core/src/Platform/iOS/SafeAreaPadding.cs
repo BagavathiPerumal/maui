@@ -145,13 +145,13 @@ internal static class SafeAreaInsetsExtensions
 				if (x is MauiView mv)
 				{
 					region = mv.GetSafeAreaRegionForEdge(edge);
-					component = mv.GetSafeAreaComponentForEdge(edge);
+					component = mv.GetRawSafeAreaComponentForEdge(edge);
 				}
 				else
 				{
 					var msv = (MauiScrollView)x;
 					region = msv.GetSafeAreaRegionForEdge(edge);
-					component = msv.GetSafeAreaComponentForEdge(edge);
+					component = msv.GetRawSafeAreaComponentForEdge(edge);
 				}
 
 				if (region != SafeAreaRegions.None && component != 0)
