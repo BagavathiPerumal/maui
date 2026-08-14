@@ -62,7 +62,33 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 			// native control, leaking it -- and everything it transitively references -- even
 			// after the managed WebViewManager was disposed.
 			// See: https://github.com/microsoft/microsoft-ui-xaml/issues/6872
-			platformView.Close();
+			CloseWebView2(platformView);
+		}
+
+		// Closes the native CoreWebView2 safely. This can be reached from two independent paths
+		// that are not mutually exclusive -- DisconnectHandler (mid-app-lifetime teardown, e.g. a
+		// Shell tab being discarded) and Window_Destroying (see BlazorWebView.Windows.cs, invoked
+		// when the whole app Window shuts down). If the Window is destroyed shortly after a
+		// mid-lifetime disconnect, both paths can call Close() on the same platform view, so this
+		// must tolerate being called more than once and must tolerate CoreWebView2 never having
+		// been initialized (e.g. handler connected then immediately disconnected before
+		// StartWebViewCoreIfPossible ran).
+		internal static void CloseWebView2(WebView2Control platformView)
+		{
+			try
+			{
+				// CoreWebView2 is null until initialization completes; calling Close() without it
+				// having ever been created is unnecessary and, per the WebView2 API, can throw.
+				if (platformView.CoreWebView2 is not null)
+				{
+					platformView.Close();
+				}
+			}
+			catch (ObjectDisposedException)
+			{
+				// Already closed by the other teardown path (Window_Destroying vs
+				// DisconnectHandler racing each other) -- nothing further to do.
+			}
 		}
 
 		private bool RequiredStartupPropertiesSet =>

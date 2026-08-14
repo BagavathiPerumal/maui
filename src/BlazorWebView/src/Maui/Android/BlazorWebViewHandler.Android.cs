@@ -116,6 +116,19 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 
 			platformView.StopLoading();
 
+			// Capture and clear the client fields now so they can't be reused, but defer disposing
+			// the managed wrapper objects until after the native platform view has detached them
+			// (SetWebViewClient(null)/SetWebChromeClient(null) inside DestroyPlatformView). This
+			// matters for the fire-and-forget path below: DestroyPlatformViewAfterDisposalAsync
+			// isn't awaited here, so if we disposed _webViewClient/_webChromeClient synchronously
+			// at the end of this method (as before), that dispose would race ahead of -- and
+			// complete before -- the native detach running later as a continuation, briefly leaving
+			// the native WebView pointed at an already-disposed client.
+			var webViewClient = _webViewClient;
+			var webChromeClient = _webChromeClient;
+			_webViewClient = null;
+			_webChromeClient = null;
+
 			if (_webviewManager != null)
 			{
 				// Dispose this component's contents so that user-written disposal logic and Blazor disposal logic will complete.
@@ -141,7 +154,7 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 
 					// Disposal already finished (we blocked on it above), so it's safe to tear down
 					// the native WebView synchronously right here.
-					DestroyPlatformView(platformView);
+					DestroyPlatformView(platformView, webViewClient, webChromeClient);
 				}
 				else
 				{
@@ -150,7 +163,7 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 					// actually completed, so the (Android-native-resource-releasing) teardown below
 					// is chained as a continuation instead of running immediately.
 					disposalTask.FireAndForget(_logger);
-					_ = DestroyPlatformViewAfterDisposalAsync(disposalTask, platformView);
+					_ = DestroyPlatformViewAfterDisposalAsync(disposalTask, platformView, webViewClient, webChromeClient);
 				}
 
 				_webviewManager = null;
@@ -159,11 +172,8 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 			{
 				// No WebViewManager was ever created (e.g. handler connected/disconnected before
 				// StartWebViewCoreIfPossible ran) -- nothing to await, so tear down immediately.
-				DestroyPlatformView(platformView);
+				DestroyPlatformView(platformView, webViewClient, webChromeClient);
 			}
-
-			_webViewClient?.Dispose();
-			_webChromeClient?.Dispose();
 		}
 
 		// Android's WebView (unlike WebView2/WKWebView) requires an explicit Destroy() call after
@@ -176,7 +186,12 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 		// indefinitely on Android after a BlazorWebView was disconnected mid-app-lifetime (e.g. a
 		// Shell tab discarded via Window.Page replacement) -- even though the managed
 		// AndroidWebKitWebViewManager was correctly disposed.
-		static void DestroyPlatformView(AWebView platformView)
+		//
+		// webViewClient/webChromeClient are disposed here -- after they've been detached from the
+		// native view via SetWebViewClient(null)/SetWebChromeClient(null) -- rather than by the
+		// caller, so the ordering is correct on both the synchronous and fire-and-forget teardown
+		// paths (see DisconnectHandler).
+		static void DestroyPlatformView(AWebView platformView, WebViewClient? webViewClient, WebChromeClient? webChromeClient)
 		{
 			platformView.SetWebViewClient(null!);
 			platformView.SetWebChromeClient(null);
@@ -186,12 +201,21 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 
 			platformView.RemoveAllViews();
 			platformView.Destroy();
+
+			webViewClient?.Dispose();
+			webChromeClient?.Dispose();
 		}
 
-		static async Task DestroyPlatformViewAfterDisposalAsync(Task disposalTask, AWebView platformView)
+		static async Task DestroyPlatformViewAfterDisposalAsync(Task disposalTask, AWebView platformView, WebViewClient? webViewClient, WebChromeClient? webChromeClient)
 		{
 			try
 			{
+				// ConfigureAwait(true) is required here (not merely the default): AWebView.Destroy()
+				// must run on the UI thread, and DisconnectHandler above starts this continuation
+				// from the UI thread while a SynchronizationContext is current, so capturing and
+				// resuming on that context is what brings us back to the UI thread after disposalTask
+				// completes. Changing this to ConfigureAwait(false) would risk calling Destroy() on
+				// a background thread, which is undefined behavior for Android's WebView.
 				await disposalTask.ConfigureAwait(true);
 			}
 			catch
@@ -200,7 +224,7 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 				// swallow here so this continuation still runs the native cleanup below.
 			}
 
-			DestroyPlatformView(platformView);
+			DestroyPlatformView(platformView, webViewClient, webChromeClient);
 		}
 
 		private bool RequiredStartupPropertiesSet =>
