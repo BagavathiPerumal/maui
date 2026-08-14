@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Android.Views;
 using Android.Webkit;
 using Android.Widget;
 using AndroidX.Activity;
@@ -137,18 +138,69 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 					disposalTask
 						.GetAwaiter()
 						.GetResult();
+
+					// Disposal already finished (we blocked on it above), so it's safe to tear down
+					// the native WebView synchronously right here.
+					DestroyPlatformView(platformView);
 				}
 				else
 				{
-					// Otherwise, by default, we'll fire-and-forget the disposal task.
+					// Otherwise, by default, we'll fire-and-forget the disposal task. The native
+					// WebView must stay alive until the Blazor/JS teardown driven by disposal has
+					// actually completed, so the (Android-native-resource-releasing) teardown below
+					// is chained as a continuation instead of running immediately.
 					disposalTask.FireAndForget(_logger);
+					_ = DestroyPlatformViewAfterDisposalAsync(disposalTask, platformView);
 				}
 
 				_webviewManager = null;
 			}
+			else
+			{
+				// No WebViewManager was ever created (e.g. handler connected/disconnected before
+				// StartWebViewCoreIfPossible ran) -- nothing to await, so tear down immediately.
+				DestroyPlatformView(platformView);
+			}
 
 			_webViewClient?.Dispose();
 			_webChromeClient?.Dispose();
+		}
+
+		// Android's WebView (unlike WebView2/WKWebView) requires an explicit Destroy() call after
+		// it's removed from the view hierarchy, or its internal Chromium-backed state -- including
+		// any strong reference it holds to the hosting Activity/Context -- is never released. See:
+		// https://developer.android.com/reference/android/webkit/WebView#destroy()
+		// MAUI's own (non-Blazor) WebViewHandler.Android.cs already does this on every
+		// DisconnectHandler; BlazorWebViewHandler never did, so the native WebView (and everything
+		// reachable through it, including Blazor component/view-model references) stayed alive
+		// indefinitely on Android after a BlazorWebView was disconnected mid-app-lifetime (e.g. a
+		// Shell tab discarded via Window.Page replacement) -- even though the managed
+		// AndroidWebKitWebViewManager was correctly disposed.
+		static void DestroyPlatformView(AWebView platformView)
+		{
+			platformView.SetWebViewClient(null!);
+			platformView.SetWebChromeClient(null);
+
+			if (platformView.Parent is ViewGroup parent)
+				parent.RemoveView(platformView);
+
+			platformView.RemoveAllViews();
+			platformView.Destroy();
+		}
+
+		static async Task DestroyPlatformViewAfterDisposalAsync(Task disposalTask, AWebView platformView)
+		{
+			try
+			{
+				await disposalTask.ConfigureAwait(true);
+			}
+			catch
+			{
+				// Already logged/handled by the sibling disposalTask.FireAndForget(_logger) call;
+				// swallow here so this continuation still runs the native cleanup below.
+			}
+
+			DestroyPlatformView(platformView);
 		}
 
 		private bool RequiredStartupPropertiesSet =>

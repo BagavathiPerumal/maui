@@ -52,6 +52,17 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 
 				_webviewManager = null;
 			}
+
+			// WebView2 wraps a native CoreWebView2 (and its own browser process); disposing
+			// WebView2WebViewManager above does not release those native resources on its own.
+			// Previously PlatformView.Close() was only invoked from Window_Destroying (see
+			// BlazorWebView.Windows.cs), i.e. only when the whole app Window shuts down. Any
+			// other teardown path that calls DisconnectHandler mid-app-lifetime (e.g. replacing
+			// Window.Page, or discarding a Shell tab hosting a BlazorWebView) never closed the
+			// native control, leaking it -- and everything it transitively references -- even
+			// after the managed WebViewManager was disposed.
+			// See: https://github.com/microsoft/microsoft-ui-xaml/issues/6872
+			platformView.Close();
 		}
 
 		private bool RequiredStartupPropertiesSet =>
