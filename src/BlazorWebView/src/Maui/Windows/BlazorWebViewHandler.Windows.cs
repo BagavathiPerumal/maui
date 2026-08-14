@@ -53,32 +53,16 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 				_webviewManager = null;
 			}
 
-			// WebView2 wraps a native CoreWebView2 (and its own browser process); disposing
-			// WebView2WebViewManager above does not release those native resources on its own.
-			// Previously PlatformView.Close() was only invoked from Window_Destroying (see
-			// BlazorWebView.Windows.cs), i.e. only when the whole app Window shuts down. Any
-			// other teardown path that calls DisconnectHandler mid-app-lifetime (e.g. replacing
-			// Window.Page, or discarding a Shell tab hosting a BlazorWebView) never closed the
-			// native control, leaking it -- and everything it transitively references -- even
-			// after the managed WebViewManager was disposed.
-			// See: https://github.com/microsoft/microsoft-ui-xaml/issues/6872
+			// Closes the native CoreWebView2, which isn't released by disposing WebViewManager alone.
 			CloseWebView2(platformView);
 		}
 
-		// Closes the native CoreWebView2 safely. This can be reached from two independent paths
-		// that are not mutually exclusive -- DisconnectHandler (mid-app-lifetime teardown, e.g. a
-		// Shell tab being discarded) and Window_Destroying (see BlazorWebView.Windows.cs, invoked
-		// when the whole app Window shuts down). If the Window is destroyed shortly after a
-		// mid-lifetime disconnect, both paths can call Close() on the same platform view, so this
-		// must tolerate being called more than once and must tolerate CoreWebView2 never having
-		// been initialized (e.g. handler connected then immediately disconnected before
-		// StartWebViewCoreIfPossible ran).
+		// Safely closes CoreWebView2. Shared by DisconnectHandler and Window_Destroying, which can
+		// both fire for the same view, so this tolerates repeat calls and an uninitialized WebView2.
 		internal static void CloseWebView2(WebView2Control platformView)
 		{
 			try
 			{
-				// CoreWebView2 is null until initialization completes; calling Close() without it
-				// having ever been created is unnecessary and, per the WebView2 API, can throw.
 				if (platformView.CoreWebView2 is not null)
 				{
 					platformView.Close();
@@ -86,8 +70,7 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 			}
 			catch (ObjectDisposedException)
 			{
-				// Already closed by the other teardown path (Window_Destroying vs
-				// DisconnectHandler racing each other) -- nothing further to do.
+				// Already closed by the other teardown path.
 			}
 		}
 
