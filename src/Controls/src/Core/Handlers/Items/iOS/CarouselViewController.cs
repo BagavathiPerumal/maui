@@ -57,6 +57,10 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			return NSIndexPath.FromItemSection(GetIndexFromIndexPath(indexPath), 0);
 		}
 
+		// Suppress speculative Unbind() while re-centering shifts _indexOffset and reloads,
+		// so still-valid cells aren't wrongly detached (breaks Loop navigation otherwise).
+		private protected override bool SuppressCellDisplayEndedUnbind => _isCenteringItem;
+
 		public override UICollectionViewCell GetCell(UICollectionView collectionView, NSIndexPath indexPath)
 		{
 			UICollectionViewCell cell;

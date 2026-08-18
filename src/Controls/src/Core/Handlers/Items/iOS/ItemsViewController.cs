@@ -1046,11 +1046,20 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			return indexPath;
 		}
 
+		// Overridden by CarouselViewController to suppress speculative Unbind() while its loop
+		// manager is re-centering/reloading, avoiding false-positive detaches of still-valid cells.
+		private protected virtual bool SuppressCellDisplayEndedUnbind => false;
+
 		internal virtual void CellDisplayingEndedFromDelegate(UICollectionViewCell cell, NSIndexPath indexPath)
 		{
 			if (cell is TemplatedCell templatedCell &&
 				(templatedCell.PlatformHandler?.VirtualView as View)?.BindingContext is object bindingContext)
 			{
+				if (SuppressCellDisplayEndedUnbind)
+				{
+					return;
+				}
+
 				// We want to unbind a cell that is no longer present in the items source. Unfortunately
 				// it's too expensive to check directly, so let's check that the current binding context
 				// matches the item at a given position.
