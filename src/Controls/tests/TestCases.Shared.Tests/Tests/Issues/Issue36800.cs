@@ -1,4 +1,4 @@
-#if IOS || ANDROID // SafeAreaEdges not supported on Catalyst and Windows
+#if IOS // Fix is specific to iOS's ContentInsetAdjustmentBehavior/AdjustedContentInset handling; not applicable on Android/Catalyst/Windows
 using System.Globalization;
 using NUnit.Framework;
 using UITest.Appium;

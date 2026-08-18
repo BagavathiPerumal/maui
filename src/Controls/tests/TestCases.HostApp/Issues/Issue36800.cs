@@ -1,7 +1,5 @@
 #if IOS
 using UIKit;
-#elif ANDROID
-using AndroidX.Core.Widget;
 #endif
 
 namespace Maui.Controls.Sample.Issues;
@@ -62,18 +60,6 @@ public class Issue36800 : ContentPage
 			// range should be zero. When the safe area is reserved twice, this value
 			// is positive and equals the safe-area thickness.
 			double phantom = (native.ContentSize.Height + native.AdjustedContentInset.Top + native.AdjustedContentInset.Bottom) - native.Bounds.Height;
-			_diagLabel.Text = $"Phantom={phantom}";
-		}
-		else
-		{
-			_diagLabel.Text = "Phantom=NoHandler";
-		}
-#elif ANDROID
-		if (_scrollView.Handler?.PlatformView is NestedScrollView native && native.GetChildAt(0) is Android.Views.View child)
-		{
-			// Android reserves the safe area via padding on the scroll view; phantom range
-			// is child height plus padding exceeding the scroll view's own height.
-			double phantom = (child.Height + native.PaddingTop + native.PaddingBottom) - native.Height;
 			_diagLabel.Text = $"Phantom={phantom}";
 		}
 		else
