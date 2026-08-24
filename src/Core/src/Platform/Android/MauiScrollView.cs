@@ -158,6 +158,10 @@ namespace Microsoft.Maui.Platform
 		(int left, int top, int right, int bottom) _originalPadding;
 		bool _hasStoredOriginalPadding;
 
+		// Tracks the paddingShim's original padding so it can be restored when the IME hides.
+		(int left, int top, int right, int bottom) _originalContentPadding;
+		bool _hasStoredOriginalContentPadding;
+		bool _contentPaddingAppliedForIme;
 
 		WindowInsetsCompat? IHandleWindowInsets.HandleWindowInsets(View view, WindowInsetsCompat insets)
 		{
@@ -173,8 +177,14 @@ namespace Microsoft.Maui.Platform
 				_hasStoredOriginalPadding = true;
 			}
 
-			return SafeAreaExtensions.ApplyAdjustedSafeAreaInsetsPx(insets, CrossPlatformLayout, _context, view);
+			var adjusted = SafeAreaExtensions.ApplyAdjustedSafeAreaInsetsPx(insets, CrossPlatformLayout, _context, view);
 
+			// In edge-to-edge mode, resizing the window doesn't shrink the ScrollView's viewport,
+			// so if the content just fits, the scroll range can't grow to reveal a focused Editor
+			// hidden behind the keyboard. Grow it by padding the inner content shim instead.
+			ApplyImeContentGrow(insets);
+
+			return adjusted;
 		}
 
 		void IHandleWindowInsets.ResetWindowInsets(View view)
@@ -182,6 +192,66 @@ namespace Microsoft.Maui.Platform
 			if (_hasStoredOriginalPadding)
 			{
 				SetPadding(_originalPadding.left, _originalPadding.top, _originalPadding.right, _originalPadding.bottom);
+			}
+			ResetContentImePadding();
+		}
+
+		// Pads the inner content shim to grow the scroll range by the IME-occluded amount.
+		void ApplyImeContentGrow(WindowInsetsCompat insets)
+		{
+			// Direct scrollable child (the ContentViewGroup wrapper from ScrollViewHandler).
+			var shim = _content;
+			if (shim is null)
+			{
+				return;
+			}
+
+			var imeInsets = insets.GetInsets(WindowInsetsCompat.Type.Ime());
+			var imeBottom = imeInsets?.Bottom ?? 0;
+
+			// Skip if our own bottom padding already covers the IME overlap.
+			var growAmount = Math.Max(0, imeBottom - PaddingBottom);
+
+			if (!_hasStoredOriginalContentPadding)
+			{
+				_originalContentPadding = (shim.PaddingLeft, shim.PaddingTop, shim.PaddingRight, shim.PaddingBottom);
+				_hasStoredOriginalContentPadding = true;
+			}
+
+			if (growAmount <= 0)
+			{
+				ResetContentImePadding();
+				return;
+			}
+
+			var targetBottom = _originalContentPadding.bottom + growAmount;
+			if (!_contentPaddingAppliedForIme || shim.PaddingBottom != targetBottom)
+			{
+				shim.SetPadding(
+					_originalContentPadding.left,
+					_originalContentPadding.top,
+					_originalContentPadding.right,
+					targetBottom);
+				_contentPaddingAppliedForIme = true;
+				PlatformInterop.RequestLayoutIfNeeded(shim);
+			}
+		}
+
+		void ResetContentImePadding()
+		{
+			if (_contentPaddingAppliedForIme && _content is not null && _hasStoredOriginalContentPadding)
+			{
+				_content.SetPadding(
+					_originalContentPadding.left,
+					_originalContentPadding.top,
+					_originalContentPadding.right,
+					_originalContentPadding.bottom);
+				_contentPaddingAppliedForIme = false;
+				PlatformInterop.RequestLayoutIfNeeded(_content);
+
+				// Scroll range shrinks when the padding is removed, so clamp back to the top to
+				// avoid getting stuck at an unreachable scroll position.
+				ScrollTo(ScrollX, 0);
 			}
 		}
 
@@ -227,6 +297,12 @@ namespace Microsoft.Maui.Platform
 
 		public void SetContent(View content)
 		{
+			// Content shim changed — re-capture the padding baseline on next inset pass.
+			if (!ReferenceEquals(_content, content))
+			{
+				_hasStoredOriginalContentPadding = false;
+				_contentPaddingAppliedForIme = false;
+			}
 			_content = content;
 			SetOrientation(_scrollOrientation);
 		}
