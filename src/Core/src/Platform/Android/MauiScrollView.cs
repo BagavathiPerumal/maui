@@ -256,6 +256,36 @@ namespace Microsoft.Maui.Platform
 					targetBottom);
 				_contentPaddingAppliedForIme = true;
 				PlatformInterop.RequestLayoutIfNeeded(shim);
+
+				// NestedScrollView only auto-scrolls to bring a focused child into view at the
+				// moment focus is requested — which happens BEFORE the keyboard slides up, so it
+				// computes "already visible" and does nothing. Growing the padding here creates
+				// scroll room, but doesn't itself move the scroll position, so without this the
+				// focused Editor (and its cursor) stays hidden behind the keyboard. Post() defers
+				// until after the layout triggered above has actually taken effect.
+				var targetImeBottom = imeBottom;
+				Post(() => ScrollFocusedViewAboveKeyboard(targetImeBottom));
+			}
+		}
+
+		// Scrolls so the currently-focused descendant is fully above the keyboard, if it isn't already.
+		void ScrollFocusedViewAboveKeyboard(int imeBottom)
+		{
+			if (FindFocus() is not View focused || !focused.IsAttachedToWindow)
+			{
+				return;
+			}
+
+			var rect = new Rect();
+			focused.GetDrawingRect(rect);
+			OffsetDescendantRectToMyCoords(focused, rect);
+
+			// Bottom edge of the area still visible above the keyboard, in this ScrollView's
+			// own scrolled coordinate space.
+			var visibleBottom = ScrollY + Height - imeBottom - PaddingBottom;
+			if (rect.Bottom > visibleBottom)
+			{
+				SmoothScrollBy(0, rect.Bottom - visibleBottom);
 			}
 		}
 
