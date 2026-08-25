@@ -182,7 +182,19 @@ namespace Microsoft.Maui.Platform
 			// In edge-to-edge mode, resizing the window doesn't shrink the ScrollView's viewport,
 			// so if the content just fits, the scroll range can't grow to reveal a focused Editor
 			// hidden behind the keyboard. Grow it by padding the inner content shim instead.
-			ApplyImeContentGrow(insets);
+			// Only do this when SafeArea hasn't already compensated for the keyboard via this
+			// view's own PaddingBottom (e.g. SafeAreaEdges=All/Container/SoftInput) — otherwise
+			// the two mechanisms stack and double-pad the content.
+			var imeInsets = insets.GetInsets(WindowInsetsCompat.Type.Ime());
+			var imeBottom = imeInsets?.Bottom ?? 0;
+			if (PaddingBottom < imeBottom)
+			{
+				ApplyImeContentGrow(insets);
+			}
+			else
+			{
+				ResetContentImePadding();
+			}
 
 			return adjusted;
 		}
@@ -203,6 +215,16 @@ namespace Microsoft.Maui.Platform
 			var shim = _content;
 			if (shim is null)
 			{
+				return;
+			}
+
+			// Mirror SafeAreaExtensions.ApplyAdjustedSafeAreaInsetsPx: in AdjustPan mode the whole
+			// window pans instead of resizing, so there's no scroll-range shortfall for us to grow —
+			// the OS already moves the focused view into place above the keyboard.
+			if (_context.GetActivity()?.Window?.Attributes is WindowManagerLayoutParams attr &&
+				(attr.SoftInputMode & SoftInput.MaskAdjust) == SoftInput.AdjustPan)
+			{
+				ResetContentImePadding();
 				return;
 			}
 
@@ -241,6 +263,10 @@ namespace Microsoft.Maui.Platform
 		{
 			if (_contentPaddingAppliedForIme && _content is not null && _hasStoredOriginalContentPadding)
 			{
+				// Capture how much extra padding is being removed BEFORE resetting it —
+				// this is exactly how much the scroll range is about to shrink by.
+				var growAmount = Math.Max(0, _content.PaddingBottom - _originalContentPadding.bottom);
+
 				_content.SetPadding(
 					_originalContentPadding.left,
 					_originalContentPadding.top,
@@ -249,9 +275,16 @@ namespace Microsoft.Maui.Platform
 				_contentPaddingAppliedForIme = false;
 				PlatformInterop.RequestLayoutIfNeeded(_content);
 
-				// Scroll range shrinks when the padding is removed, so clamp back to the top to
-				// avoid getting stuck at an unreachable scroll position.
-				ScrollTo(ScrollX, 0);
+				// If the current scroll offset would now be unreachable (dead/blank space at the
+				// bottom), clamp it back into the new valid range instead of unconditionally
+				// jumping to the top — this preserves the user's scroll position whenever it's
+				// still valid after the shrink. Post() defers until the pending layout (triggered
+				// by RequestLayoutIfNeeded above) has actually taken effect.
+				if (growAmount > 0 && ScrollY > 0)
+				{
+					var clampedScrollY = Math.Max(0, ScrollY - growAmount);
+					Post(() => ScrollTo(ScrollX, clampedScrollY));
+				}
 			}
 		}
 
