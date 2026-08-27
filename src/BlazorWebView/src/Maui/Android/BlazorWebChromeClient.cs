@@ -20,13 +20,66 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 			{
 				// Intercept _blank target <a> tags to always open in device browser
 				// regardless of UrlLoadingStrategy.OpenInWebview
-				var requestUrl = view.GetHitTestResult().Extra;
-				var intent = new Intent(Intent.ActionView, Uri.Parse(requestUrl));
-				view.Context.StartActivity(intent);
+				var hitTestResult = view.GetHitTestResult();
+				var requestUrl = hitTestResult?.Extra;
+				var shouldResolveWithFocusNode =
+					hitTestResult?.Type == global::Android.Webkit.HitTestResult.SrcImageAnchorType ||
+					string.IsNullOrWhiteSpace(requestUrl) ||
+					IsClearlyNonLaunchableUrl(requestUrl);
+
+				if (shouldResolveWithFocusNode)
+				{
+					var handler = new FocusNodeHrefHandler(view.Context);
+					view.RequestFocusNodeHref(handler.ObtainMessage());
+				}
+				else
+				{
+					TryOpenInExternalBrowser(view.Context, requestUrl);
+				}
 			}
 
-			// We don't actually want to create a new WebView window so we just return false 
+			// We don't actually want to create a new WebView window so we just return false
 			return false;
+		}
+
+		static bool IsClearlyNonLaunchableUrl(string url) =>
+			url.StartsWith("data:", global::System.StringComparison.OrdinalIgnoreCase) ||
+			url.StartsWith("blob:", global::System.StringComparison.OrdinalIgnoreCase) ||
+			url.StartsWith("javascript:", global::System.StringComparison.OrdinalIgnoreCase) ||
+			url.StartsWith("about:", global::System.StringComparison.OrdinalIgnoreCase);
+
+		static void TryOpenInExternalBrowser(Context context, string? url)
+		{
+			if (string.IsNullOrWhiteSpace(url) || IsClearlyNonLaunchableUrl(url))
+			{
+				return;
+			}
+
+			try
+			{
+				var intent = new Intent(Intent.ActionView, Uri.Parse(url));
+				context.StartActivity(intent);
+			}
+			catch (ActivityNotFoundException)
+			{
+				// No handler available for this URL scheme.
+			}
+		}
+
+		sealed class FocusNodeHrefHandler : Handler
+		{
+			readonly Context _context;
+
+			public FocusNodeHrefHandler(Context context) : base(Looper.MainLooper!)
+			{
+				_context = context;
+			}
+
+			public override void HandleMessage(Message msg)
+			{
+				var url = msg.Data?.GetString("url");
+				TryOpenInExternalBrowser(_context, url);
+			}
 		}
 
 		public override bool OnShowFileChooser(global::Android.Webkit.WebView? view, IValueCallback? filePathCallback, FileChooserParams? fileChooserParams)
