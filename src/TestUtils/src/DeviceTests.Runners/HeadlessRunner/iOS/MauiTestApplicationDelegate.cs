@@ -13,8 +13,6 @@ namespace Microsoft.Maui.TestUtils.DeviceTests.Runners.HeadlessRunner
 {
 	public abstract class MauiTestApplicationDelegate : UIApplicationDelegate
 	{
-		readonly TaskCompletionSource _windowReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
 		public static bool IsHeadlessRunner(string[] args)
 		{
 			// usually means this is from xharness
