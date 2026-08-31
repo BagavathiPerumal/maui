@@ -14,8 +14,9 @@ public class Issue35157(TestDevice device) : _IssuesUITest(device)
 	[Category(UITestCategories.WebView)]
 	public void TargetBlankLinkWithDataImageDoesNotCrash()
 	{
-		App.WaitForElement("Open Google");
-		App.Tap("Open Google");
+		var imageLink = App.WaitForElement(
+			AppiumQuery.ByXPath("//*[@content-desc='Open Google' and @clickable='true']"));
+		imageLink.Tap();
 		Thread.Sleep(2000);
 
 		App.ForegroundApp();
