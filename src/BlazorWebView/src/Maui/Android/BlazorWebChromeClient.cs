@@ -20,21 +20,16 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 			{
 				// Intercept _blank target <a> tags to always open in device browser
 				// regardless of UrlLoadingStrategy.OpenInWebview
-				var hitTestResult = view.GetHitTestResult();
-				var requestUrl = hitTestResult?.Extra;
-				var shouldResolveWithFocusNode =
-					hitTestResult?.Type == global::Android.Webkit.HitTestResult.SrcImageAnchorType ||
-					string.IsNullOrWhiteSpace(requestUrl) ||
-					IsClearlyNonLaunchableUrl(requestUrl);
 
-				if (shouldResolveWithFocusNode)
+				var hitTestResult = view.GetHitTestResult();
+				if (hitTestResult?.Type == global::Android.Webkit.HitTestResult.SrcImageAnchorType)
 				{
 					var handler = new FocusNodeHrefHandler(view.Context);
 					view.RequestFocusNodeHref(handler.ObtainMessage());
 				}
 				else
 				{
-					TryOpenInExternalBrowser(view.Context, requestUrl);
+					TryOpenInExternalBrowser(view.Context, hitTestResult?.Extra);
 				}
 			}
 
@@ -77,8 +72,15 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 
 			public override void HandleMessage(Message msg)
 			{
-				var url = msg.Data?.GetString("url");
-				TryOpenInExternalBrowser(_context, url);
+				try
+				{
+					var url = msg.Data?.GetString("url");
+					TryOpenInExternalBrowser(_context, url);
+				}
+				finally
+				{
+					Dispose();
+				}
 			}
 		}
 
