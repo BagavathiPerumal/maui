@@ -1,3 +1,4 @@
+// This regression is Android-only because it exercises WebView.HitTestResult URL resolution for image anchors.
 #if ANDROID
 using NUnit.Framework;
 using UITest.Appium;
