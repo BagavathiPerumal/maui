@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Android.Content;
+using Android.Util;
 using Android.Views;
 using AndroidX.Core.Graphics;
 using AndroidX.Core.View;
@@ -30,7 +31,13 @@ namespace Microsoft.Maui.Platform
 	{
 		readonly HashSet<AView> _trackedViews = [];
 		readonly HashSet<AView> _imeAnimationViews = [];
-		bool IsImeAnimating { get; set; }
+		readonly HashSet<WindowInsetsAnimationCompat> _runningImeAnimations = [];
+		readonly DisplayMetrics _imeAnimationDisplayMetrics = new();
+		readonly int[] _imeAnimationViewLocation = new int[2];
+		int _imeAnimationScreenHeight;
+		bool _imeAnimationMetricsInitialized;
+		bool _shouldApplyAnimatedImeInsets;
+		bool IsImeAnimating => _runningImeAnimations.Count > 0;
 
 		// Static tracking for views that have local inset listeners.
 		// This registry allows child views to find their appropriate listener without
@@ -434,18 +441,17 @@ namespace Microsoft.Maui.Platform
 		public override void OnPrepare(WindowInsetsAnimationCompat? animation)
 		{
 			base.OnPrepare(animation);
-			if (IsImeAnimation(animation))
+			if (animation is not null && IsImeAnimation(animation))
 			{
-				_imeAnimationViews.Clear();
-				IsImeAnimating = true;
+				StartImeAnimation(animation);
 			}
 		}
 
 		public override WindowInsetsAnimationCompat.BoundsCompat? OnStart(WindowInsetsAnimationCompat? animation, WindowInsetsAnimationCompat.BoundsCompat? bounds)
 		{
-			if (IsImeAnimation(animation))
+			if (animation is not null && IsImeAnimation(animation))
 			{
-				IsImeAnimating = true;
+				StartImeAnimation(animation);
 			}
 
 			return bounds;
@@ -453,7 +459,22 @@ namespace Microsoft.Maui.Platform
 
 		public override WindowInsetsCompat? OnProgress(WindowInsetsCompat? insets, IList<WindowInsetsAnimationCompat>? runningAnimations)
 		{
-			if (insets is null || runningAnimations is null || !runningAnimations.Any(IsImeAnimation))
+			if (insets is null || runningAnimations is null)
+			{
+				return insets;
+			}
+
+			bool hasImeAnimation = false;
+			for (int i = 0; i < runningAnimations.Count; i++)
+			{
+				if (IsImeAnimation(runningAnimations[i]))
+				{
+					hasImeAnimation = true;
+					break;
+				}
+			}
+
+			if (!hasImeAnimation)
 			{
 				return insets;
 			}
@@ -462,7 +483,18 @@ namespace Microsoft.Maui.Platform
 			{
 				if (view is ICrossPlatformLayoutBacking { CrossPlatformLayout: { } crossPlatformLayout } && view.Context is Context context)
 				{
-					SafeAreaExtensions.ApplyAnimatedSoftInputInsetsPx(insets, crossPlatformLayout, context, view);
+					InitializeImeAnimationMetrics(context);
+					if (_shouldApplyAnimatedImeInsets &&
+						SafeAreaExtensions.ApplyAnimatedSoftInputInsetsPx(
+							insets,
+							crossPlatformLayout,
+							context,
+							view,
+							_imeAnimationScreenHeight,
+							_imeAnimationViewLocation))
+					{
+						TrackView(view);
+					}
 				}
 			}
 
@@ -473,16 +505,62 @@ namespace Microsoft.Maui.Platform
 		{
 			base.OnEnd(animation);
 
-			if (IsImeAnimation(animation))
+			if (animation is not null &&
+				IsImeAnimation(animation) &&
+				_runningImeAnimations.Remove(animation) &&
+				_runningImeAnimations.Count == 0)
 			{
-				IsImeAnimating = false;
 				foreach (var view in _imeAnimationViews)
 				{
 					ViewCompat.RequestApplyInsets(view);
 				}
 
 				_imeAnimationViews.Clear();
+				_imeAnimationScreenHeight = 0;
+				_imeAnimationMetricsInitialized = false;
+				_shouldApplyAnimatedImeInsets = false;
 			}
+		}
+
+		void StartImeAnimation(WindowInsetsAnimationCompat animation)
+		{
+			if (_runningImeAnimations.Count == 0)
+			{
+				_imeAnimationViews.Clear();
+				_imeAnimationScreenHeight = 0;
+				_imeAnimationMetricsInitialized = false;
+				_shouldApplyAnimatedImeInsets = false;
+			}
+
+			_runningImeAnimations.Add(animation);
+		}
+
+		void InitializeImeAnimationMetrics(Context context)
+		{
+			if (_imeAnimationMetricsInitialized)
+			{
+				return;
+			}
+
+			_imeAnimationMetricsInitialized = true;
+
+			if (context.GetSystemService(Context.WindowService) is IWindowManager windowManager &&
+				windowManager.DefaultDisplay is not null)
+			{
+				windowManager.DefaultDisplay.GetRealMetrics(_imeAnimationDisplayMetrics);
+				_imeAnimationScreenHeight = _imeAnimationDisplayMetrics.HeightPixels;
+			}
+
+			if (context.GetActivity()?.Window?.Attributes is WindowManagerLayoutParams attributes)
+			{
+				_shouldApplyAnimatedImeInsets = ShouldApplyAnimatedImeInsets(attributes.SoftInputMode);
+			}
+		}
+
+		internal static bool ShouldApplyAnimatedImeInsets(SoftInput softInputMode)
+		{
+			var adjustMode = softInputMode & SoftInput.MaskAdjust;
+			return adjustMode == SoftInput.AdjustResize || adjustMode == SoftInput.AdjustNothing;
 		}
 
 		/// <summary>

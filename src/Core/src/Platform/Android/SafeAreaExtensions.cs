@@ -308,16 +308,18 @@ internal static class SafeAreaExtensions
 		return newWindowInsets;
 	}
 
-	internal static void ApplyAnimatedSoftInputInsetsPx(
+	internal static bool ApplyAnimatedSoftInputInsetsPx(
 		WindowInsetsCompat windowInsets,
 		ICrossPlatformLayout crossPlatformLayout,
 		Context context,
-		View view)
+		View view,
+		int screenHeight,
+		int[] viewLocation)
 	{
 		var bottomRegion = GetSafeAreaRegionForEdge(3, crossPlatformLayout);
-		if (!SafeAreaEdges.IsSoftInput(bottomRegion))
+		if (!SafeAreaEdges.IsSoftInput(bottomRegion) || screenHeight <= 0)
 		{
-			return;
+			return false;
 		}
 
 		var keyboardBottom = windowInsets.GetKeyboardInsetsPx(context).Bottom;
@@ -325,31 +327,26 @@ internal static class SafeAreaExtensions
 		var viewHeight = view.Height > 0 ? view.Height : view.MeasuredHeight;
 		if (viewHeight <= 0)
 		{
-			return;
+			return false;
 		}
 
-		var windowManager = context.GetSystemService(Context.WindowService) as IWindowManager;
-		if (windowManager?.DefaultDisplay is null)
-		{
-			return;
-		}
-
-		var realMetrics = new global::Android.Util.DisplayMetrics();
-		windowManager.DefaultDisplay.GetRealMetrics(realMetrics);
-
-		var viewLocation = new int[2];
 		view.GetLocationOnScreen(viewLocation);
-		var rootLocation = new int[2];
-		view.RootView?.GetLocationOnScreen(rootLocation);
-		var viewTop = viewLocation[1] - rootLocation[1];
-		var viewBottom = viewTop + viewHeight;
-		var keyboardOverlap = Math.Min(keyboardBottom, Math.Max(0, viewBottom - (realMetrics.HeightPixels - keyboardBottom)));
-		var containerOverlap = Math.Min(containerBottom, Math.Max(0, viewBottom - (realMetrics.HeightPixels - containerBottom)));
+		var viewBottom = viewLocation[1] + viewHeight;
+		if (view.Width > 0 &&
+			view.Height > 0 &&
+			GetSafeAreaView2(crossPlatformLayout) is IView safeAreaView)
+		{
+			viewBottom += (int)context.ToPixels(safeAreaView.Margin.Bottom);
+		}
+
+		var keyboardOverlap = Math.Min(keyboardBottom, Math.Max(0, viewBottom - (screenHeight - keyboardBottom)));
+		var containerOverlap = Math.Min(containerBottom, Math.Max(0, viewBottom - (screenHeight - containerBottom)));
 		var bottom = SafeAreaEdges.IsOnlySoftInput(bottomRegion)
 			? keyboardOverlap
 			: Math.Max(containerOverlap, keyboardOverlap);
 
 		view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, (int)bottom);
+		return bottom > 0;
 	}
 
 	internal static double GetSafeAreaForEdge(SafeAreaRegions safeAreaRegion, double originalSafeArea, int edge, bool isKeyboardShowing, SafeAreaPadding keyBoardInsets)
