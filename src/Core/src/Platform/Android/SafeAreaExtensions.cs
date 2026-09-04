@@ -349,7 +349,9 @@ internal static class SafeAreaExtensions
 
 			if (isKeyboardShowing)
 			{
-				return keyBoardInsets.Bottom;
+				// Return keyboard insets for any region that includes SoftInput
+				if (SafeAreaEdges.IsSoftInput(safeAreaRegion))
+					return keyBoardInsets.Bottom;
 			}
 		}
 
