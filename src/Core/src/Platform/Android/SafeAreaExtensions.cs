@@ -312,38 +312,19 @@ internal static class SafeAreaExtensions
 		WindowInsetsCompat windowInsets,
 		ICrossPlatformLayout crossPlatformLayout,
 		Context context,
-		View view,
-		int screenHeight,
-		int[] viewLocation)
+		View view)
 	{
 		var bottomRegion = GetSafeAreaRegionForEdge(3, crossPlatformLayout);
-		if (!SafeAreaEdges.IsSoftInput(bottomRegion) || screenHeight <= 0)
+		if (!SafeAreaEdges.IsSoftInput(bottomRegion))
 		{
 			return false;
 		}
 
 		var keyboardBottom = windowInsets.GetKeyboardInsetsPx(context).Bottom;
 		var containerBottom = windowInsets.ToSafeAreaInsetsPx(context).Bottom;
-		var viewHeight = view.Height > 0 ? view.Height : view.MeasuredHeight;
-		if (viewHeight <= 0)
-		{
-			return false;
-		}
-
-		view.GetLocationOnScreen(viewLocation);
-		var viewBottom = viewLocation[1] + viewHeight;
-		if (view.Width > 0 &&
-			view.Height > 0 &&
-			GetSafeAreaView2(crossPlatformLayout) is IView safeAreaView)
-		{
-			viewBottom += (int)context.ToPixels(safeAreaView.Margin.Bottom);
-		}
-
-		var keyboardOverlap = Math.Min(keyboardBottom, Math.Max(0, viewBottom - (screenHeight - keyboardBottom)));
-		var containerOverlap = Math.Min(containerBottom, Math.Max(0, viewBottom - (screenHeight - containerBottom)));
 		var bottom = SafeAreaEdges.IsOnlySoftInput(bottomRegion)
-			? keyboardOverlap
-			: Math.Max(containerOverlap, keyboardOverlap);
+			? keyboardBottom
+			: Math.Max(containerBottom, keyboardBottom);
 
 		view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, (int)bottom);
 		return bottom > 0;

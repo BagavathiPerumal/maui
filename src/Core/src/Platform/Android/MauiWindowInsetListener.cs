@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Android.Content;
-using Android.Util;
 using Android.Views;
 using AndroidX.Core.Graphics;
 using AndroidX.Core.View;
@@ -32,10 +31,7 @@ namespace Microsoft.Maui.Platform
 		readonly HashSet<AView> _trackedViews = [];
 		readonly HashSet<AView> _imeAnimationViews = [];
 		readonly HashSet<WindowInsetsAnimationCompat> _runningImeAnimations = [];
-		readonly DisplayMetrics _imeAnimationDisplayMetrics = new();
-		readonly int[] _imeAnimationViewLocation = new int[2];
-		int _imeAnimationScreenHeight;
-		bool _imeAnimationMetricsInitialized;
+		bool _imeAnimationStateInitialized;
 		bool _shouldApplyAnimatedImeInsets;
 		bool IsImeAnimating => _runningImeAnimations.Count > 0;
 
@@ -483,15 +479,13 @@ namespace Microsoft.Maui.Platform
 			{
 				if (view is ICrossPlatformLayoutBacking { CrossPlatformLayout: { } crossPlatformLayout } && view.Context is Context context)
 				{
-					InitializeImeAnimationMetrics(context);
+					InitializeImeAnimationState(context);
 					if (_shouldApplyAnimatedImeInsets &&
 						SafeAreaExtensions.ApplyAnimatedSoftInputInsetsPx(
 							insets,
 							crossPlatformLayout,
 							context,
-							view,
-							_imeAnimationScreenHeight,
-							_imeAnimationViewLocation))
+							view))
 					{
 						TrackView(view);
 					}
@@ -514,10 +508,8 @@ namespace Microsoft.Maui.Platform
 				{
 					ViewCompat.RequestApplyInsets(view);
 				}
-
 				_imeAnimationViews.Clear();
-				_imeAnimationScreenHeight = 0;
-				_imeAnimationMetricsInitialized = false;
+				_imeAnimationStateInitialized = false;
 				_shouldApplyAnimatedImeInsets = false;
 			}
 		}
@@ -527,29 +519,21 @@ namespace Microsoft.Maui.Platform
 			if (_runningImeAnimations.Count == 0)
 			{
 				_imeAnimationViews.Clear();
-				_imeAnimationScreenHeight = 0;
-				_imeAnimationMetricsInitialized = false;
+				_imeAnimationStateInitialized = false;
 				_shouldApplyAnimatedImeInsets = false;
 			}
 
 			_runningImeAnimations.Add(animation);
 		}
 
-		void InitializeImeAnimationMetrics(Context context)
+		void InitializeImeAnimationState(Context context)
 		{
-			if (_imeAnimationMetricsInitialized)
+			if (_imeAnimationStateInitialized)
 			{
 				return;
 			}
 
-			_imeAnimationMetricsInitialized = true;
-
-			if (context.GetSystemService(Context.WindowService) is IWindowManager windowManager &&
-				windowManager.DefaultDisplay is not null)
-			{
-				windowManager.DefaultDisplay.GetRealMetrics(_imeAnimationDisplayMetrics);
-				_imeAnimationScreenHeight = _imeAnimationDisplayMetrics.HeightPixels;
-			}
+			_imeAnimationStateInitialized = true;
 
 			if (context.GetActivity()?.Window?.Attributes is WindowManagerLayoutParams attributes)
 			{
