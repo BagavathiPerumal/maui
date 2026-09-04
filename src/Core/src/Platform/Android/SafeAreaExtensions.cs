@@ -349,10 +349,7 @@ internal static class SafeAreaExtensions
 
 			if (isKeyboardShowing)
 			{
-				// Combined regions such as All must continue respecting container insets
-				// while the keyboard is visible.
-				if (SafeAreaEdges.IsSoftInput(safeAreaRegion))
-					return Math.Max(originalSafeArea, keyBoardInsets.Bottom);
+				return keyBoardInsets.Bottom;
 			}
 		}
 
