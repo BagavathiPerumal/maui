@@ -40,21 +40,48 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 				{
 					// If the app is configured to block on dispose via an AppContext switch,
 					// we'll synchronously wait for the disposal to complete. This can cause a deadlock.
-					disposalTask
-						.GetAwaiter()
-						.GetResult();
+					try
+					{
+						disposalTask
+							.GetAwaiter()
+							.GetResult();
+					}
+					finally
+					{
+						CloseWebView2(platformView);
+					}
 				}
 				else
 				{
-					// Otherwise, by default, we'll fire-and-forget the disposal task.
-					disposalTask.FireAndForget();
+					// Keep WebView2 alive until component and JS disposal has completed.
+					CloseWebView2AfterDisposalAsync(disposalTask, platformView).FireAndForget();
 				}
 
 				_webviewManager = null;
 			}
+			else
+			{
+				CloseWebView2(platformView);
+			}
+		}
 
-			// Closes the native CoreWebView2, which isn't released by disposing WebViewManager alone.
-			CloseWebView2(platformView);
+		static async Task CloseWebView2AfterDisposalAsync(Task disposalTask, WebView2Control platformView)
+		{
+			try
+			{
+				await disposalTask.ConfigureAwait(false);
+			}
+			finally
+			{
+				if (platformView.DispatcherQueue.HasThreadAccess)
+				{
+					CloseWebView2(platformView);
+				}
+				else if (!platformView.DispatcherQueue.TryEnqueue(() => CloseWebView2(platformView)))
+				{
+					throw new InvalidOperationException("Unable to dispatch WebView2 cleanup.");
+				}
+			}
 		}
 
 		// Safely closes CoreWebView2. Shared by DisconnectHandler and Window_Destroying, which can

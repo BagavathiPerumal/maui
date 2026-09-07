@@ -94,6 +94,7 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 
 		IShellItemRenderer _currentShellItemRenderer;
 		bool _disposed;
+		bool _handlerDisconnected;
 		IShellFlyoutRenderer _flyoutRenderer;
 		Task _activeTransition = Task.CompletedTask;
 		IShellItemRenderer _incomingRenderer;
@@ -208,6 +209,13 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 			if (disposing && !_disposed)
 			{
 				_disposed = true;
+
+				// The UIViewController can be disposed independently of (and before) the MAUI
+				// handler-disconnect traversal reaching this renderer (e.g. native teardown,
+				// GC finalization ordering). Run the handler-side cleanup here too so it isn't
+				// skipped if IElementHandler.DisconnectHandler() runs afterward -- or never runs
+				// at all.
+				DisconnectHandlerCore();
 				FlyoutRenderer?.Dispose();
 			}
 
@@ -305,6 +313,16 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 			_incomingRenderer = value;
 			await _activeTransition;
 
+			if (_disposed || Element is null)
+			{
+				if (_incomingRenderer == value)
+					_incomingRenderer = null;
+
+				(value as IDisconnectable)?.Disconnect();
+				value.Dispose();
+				return;
+			}
+
 			// This means the selected item changed while the active transition
 			// was finishing up
 			if (_incomingRenderer != value ||
@@ -344,7 +362,7 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 			}
 
 			// current renderer is still valid
-			if (_currentShellItemRenderer == value)
+			if (!_disposed && Element is not null && _currentShellItemRenderer == value)
 			{
 				UpdateBackgroundColor();
 				UpdateFlowDirection();
@@ -421,11 +439,26 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 
 		void IElementHandler.DisconnectHandler()
 		{
-			if (_disposed)
+			DisconnectHandlerCore();
+			Dispose();
+		}
+
+		// Idempotent handler-side teardown, shared by IElementHandler.DisconnectHandler() and
+		// Dispose(bool). The two can run in either order (e.g. the UIViewController can be
+		// disposed by native teardown/GC before MAUI's disconnect traversal reaches it), so this
+		// is guarded by its own flag to guarantee the cleanup below always runs exactly once,
+		// regardless of which caller runs first.
+		void DisconnectHandlerCore()
+		{
+			if (_handlerDisconnected)
 				return;
+			_handlerDisconnected = true;
 
 			var element = Element;
-			element.PropertyChanged -= OnElementPropertyChanged;
+			if (element is not null)
+			{
+				element.PropertyChanged -= OnElementPropertyChanged;
+			}
 
 			if (_currentShellItemRenderer is not null)
 			{
@@ -435,11 +468,12 @@ namespace Microsoft.Maui.Controls.Handlers.Compatibility
 				_currentShellItemRenderer.Dispose();
 				_currentShellItemRenderer = null;
 			}
+			_incomingRenderer = null;
 
-			Dispose();
-
-			if (element.Handler == (IPlatformViewHandler)this)
+			if (element is not null && element.Handler == (IPlatformViewHandler)this)
+			{
 				element.Handler = null;
+			}
 
 			Element = null;
 			_mauiContext = null;

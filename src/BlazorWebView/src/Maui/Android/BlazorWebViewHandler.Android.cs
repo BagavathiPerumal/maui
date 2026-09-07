@@ -143,13 +143,16 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 				{
 					// If the app is configured to block on dispose via an AppContext switch,
 					// we'll synchronously wait for the disposal to complete. This can cause a deadlock.
-					disposalTask
-						.GetAwaiter()
-						.GetResult();
-
-					// Disposal already finished (we blocked on it above), so it's safe to tear down
-					// the native WebView synchronously right here.
-					DestroyPlatformView(platformView, webViewClient, webChromeClient);
+					try
+					{
+						disposalTask
+							.GetAwaiter()
+							.GetResult();
+					}
+					finally
+					{
+						DestroyPlatformView(platformView, webViewClient, webChromeClient);
+					}
 				}
 				else
 				{
@@ -158,7 +161,8 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 					// actually completed, so the (Android-native-resource-releasing) teardown below
 					// is chained as a continuation instead of running immediately.
 					disposalTask.FireAndForget(_logger);
-					_ = DestroyPlatformViewAfterDisposalAsync(disposalTask, platformView, webViewClient, webChromeClient);
+					DestroyPlatformViewAfterDisposalAsync(disposalTask, platformView, webViewClient, webChromeClient)
+						.FireAndForget(_logger);
 				}
 
 				_webviewManager = null;
@@ -205,7 +209,8 @@ namespace Microsoft.AspNetCore.Components.WebView.Maui
 				// swallow here so this continuation still runs the native cleanup below.
 			}
 
-			DestroyPlatformView(platformView, webViewClient, webChromeClient);
+			await Microsoft.Maui.ApplicationModel.MainThread.InvokeOnMainThreadAsync(
+				() => DestroyPlatformView(platformView, webViewClient, webChromeClient));
 		}
 
 		private bool RequiredStartupPropertiesSet =>
