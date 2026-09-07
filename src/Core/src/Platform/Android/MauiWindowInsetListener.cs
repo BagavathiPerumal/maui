@@ -30,9 +30,11 @@ namespace Microsoft.Maui.Platform
 	{
 		readonly HashSet<AView> _trackedViews = [];
 		readonly HashSet<AView> _imeAnimationViews = [];
+		readonly HashSet<AView> _pendingFocusedViewRequests = [];
 		readonly HashSet<WindowInsetsAnimationCompat> _runningImeAnimations = [];
 		bool _imeAnimationStateInitialized;
 		bool _shouldApplyAnimatedImeInsets;
+		int _lastImeInsetBottom = -1;
 		bool IsImeAnimating => _runningImeAnimations.Count > 0;
 
 		// Static tracking for views that have local inset listeners.
@@ -475,6 +477,10 @@ namespace Microsoft.Maui.Platform
 				return insets;
 			}
 
+			var imeInsetBottom = insets.GetInsets(WindowInsetsCompat.Type.Ime())?.Bottom ?? 0;
+			var isImeOpening = _lastImeInsetBottom >= 0 && imeInsetBottom > _lastImeInsetBottom;
+			_lastImeInsetBottom = imeInsetBottom;
+
 			foreach (var view in _imeAnimationViews)
 			{
 				if (view is ICrossPlatformLayoutBacking { CrossPlatformLayout: { } crossPlatformLayout } && view.Context is Context context)
@@ -485,9 +491,14 @@ namespace Microsoft.Maui.Platform
 							insets,
 							crossPlatformLayout,
 							context,
-							view))
+							view,
+							isImeOpening))
 					{
 						TrackView(view);
+						if (isImeOpening)
+						{
+							RequestFocusedViewVisibleAfterLayout(view);
+						}
 					}
 				}
 			}
@@ -509,9 +520,76 @@ namespace Microsoft.Maui.Platform
 					ViewCompat.RequestApplyInsets(view);
 				}
 				_imeAnimationViews.Clear();
+				_pendingFocusedViewRequests.Clear();
 				_imeAnimationStateInitialized = false;
 				_shouldApplyAnimatedImeInsets = false;
+				_lastImeInsetBottom = -1;
 			}
+		}
+
+		void RequestFocusedViewVisibleAfterLayout(AView insetView)
+		{
+			if (!_pendingFocusedViewRequests.Add(insetView))
+			{
+				return;
+			}
+
+			insetView.Post(() =>
+			{
+				_pendingFocusedViewRequests.Remove(insetView);
+				if (!insetView.IsAttachedToWindow)
+				{
+					return;
+				}
+
+				var focusedView = insetView.RootView?.FindFocus();
+				if (focusedView is null || !IsDescendantOf(focusedView, insetView))
+				{
+					return;
+				}
+
+				// If a scrollable list (CollectionView/CarouselView) sits between the focused
+				// view and the safe-area container, let it manage its own item visibility
+				// instead of forcing it to scroll as a side effect of the keyboard opening.
+				if (HasInterveningRecyclerViewAncestor(focusedView, insetView))
+				{
+					return;
+				}
+
+				var visibleRect = new global::Android.Graphics.Rect();
+				if (focusedView.GetGlobalVisibleRect(visibleRect) &&
+					visibleRect.Width() >= focusedView.Width &&
+					visibleRect.Height() >= focusedView.Height)
+				{
+					return;
+				}
+
+				var focusedRect = new global::Android.Graphics.Rect();
+				focusedView.GetDrawingRect(focusedRect);
+				focusedView.RequestRectangleOnScreen(focusedRect, true);
+			});
+		}
+
+		/// <summary>
+		/// Checks whether a <see cref="RecyclerView"/> (the platform base for CollectionView/CarouselView)
+		/// sits between <paramref name="child"/> and <paramref name="boundary"/> in the view hierarchy.
+		/// <c>RequestRectangleOnScreen</c> bubbles through every ancestor, including nested
+		/// scrollable containers, so this is used to avoid unintentionally scrolling a nested list.
+		/// </summary>
+		static bool HasInterveningRecyclerViewAncestor(AView child, AView boundary)
+		{
+			var parent = child.Parent;
+			while (parent is AView parentView && parentView != boundary)
+			{
+				if (parentView is RecyclerView)
+				{
+					return true;
+				}
+
+				parent = parentView.Parent;
+			}
+
+			return false;
 		}
 
 		void StartImeAnimation(WindowInsetsAnimationCompat animation)
@@ -519,8 +597,10 @@ namespace Microsoft.Maui.Platform
 			if (_runningImeAnimations.Count == 0)
 			{
 				_imeAnimationViews.Clear();
+				_pendingFocusedViewRequests.Clear();
 				_imeAnimationStateInitialized = false;
 				_shouldApplyAnimatedImeInsets = false;
+				_lastImeInsetBottom = -1;
 			}
 
 			_runningImeAnimations.Add(animation);
