@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Android.Content;
 using Android.Graphics.Drawables;
 using Android.OS;
+using Android.Runtime;
 using Android.Util;
 using Android.Views;
 using Android.Views.InputMethods;
@@ -625,51 +626,78 @@ namespace Microsoft.Maui.Platform
 			}
 
 			EventHandler<AView.ViewAttachedToWindowEventArgs>? routedEventHandler = null;
+			ViewTreeObserver? viewTreeObserver = null;
+			OnPreDrawListener? onPreDrawListener = null;
 			ActionDisposable? disposable = new ActionDisposable(() =>
 			{
 				if (routedEventHandler is not null && view.IsAlive())
 				{
 					view.ViewAttachedToWindow -= routedEventHandler;
 				}
+
+				if (viewTreeObserver?.IsAlive == true && onPreDrawListener is not null)
+					viewTreeObserver.RemoveOnPreDrawListener(onPreDrawListener);
+
+				onPreDrawListener?.Dispose();
+				onPreDrawListener = null;
+				viewTreeObserver = null;
 			});
 
 			routedEventHandler = (_, __) =>
 			{
-				if (!view.IsLoaded() && Looper.MyLooper() is Looper q)
-				{
-					new Handler(q).Post(() =>
-					{
-						if (disposable is not null)
-							action.Invoke();
-
-						disposable?.Dispose();
-						disposable = null;
-					});
-
+				if (disposable is null)
 					return;
-				}
 
-				// Store local reference to allow cancellation inside the Post callback
-				var localDisposable = disposable;
-				disposable = null;
-				view.Post(() =>
+				if (viewTreeObserver?.IsAlive == true && onPreDrawListener is not null)
+					viewTreeObserver.RemoveOnPreDrawListener(onPreDrawListener);
+
+				onPreDrawListener?.Dispose();
+				var observer = view.ViewTreeObserver!;
+				var listener = new OnPreDrawListener(() =>
 				{
-					if (view.IsAttachedToWindow && localDisposable is not null)
-					{
-						action();
-						localDisposable.Dispose();
-					}
-					else if (localDisposable is not null)
-					{
-						// View was detached before Post ran (e.g., ViewPager2 detach/re-attach cycle).
-						// Restore disposable so the next ViewAttachedToWindow can retry.
-						disposable = localDisposable;
-					}
+					if (!view.IsAttachedToWindow || disposable is null)
+						return;
+
+					var localDisposable = disposable;
+					disposable = null;
+					localDisposable.Dispose();
+					action();
 				});
+
+				viewTreeObserver = observer;
+				onPreDrawListener = listener;
+				observer.AddOnPreDrawListener(listener);
 			};
 
 			view.ViewAttachedToWindow += routedEventHandler;
 			return disposable;
+		}
+
+		sealed class OnPreDrawListener : Java.Lang.Object, ViewTreeObserver.IOnPreDrawListener
+		{
+			Action? _action;
+
+			public OnPreDrawListener(Action action)
+			{
+				_action = action;
+			}
+
+			OnPreDrawListener(IntPtr handle, JniHandleOwnership transfer)
+				: base(handle, transfer)
+			{
+			}
+
+			public bool OnPreDraw()
+			{
+				_action?.Invoke();
+				return true;
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				_action = null;
+				base.Dispose(disposing);
+			}
 		}
 
 		internal static IDisposable OnUnloaded(this View view, Action action)
