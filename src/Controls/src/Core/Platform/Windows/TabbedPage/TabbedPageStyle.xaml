@@ -4,7 +4,7 @@
     xmlns:maui="clr-namespace:Microsoft.Maui;assembly=Microsoft.Maui"
     xmlns:controlsPlatform="using:Microsoft.Maui.Controls.Platform">
     <DataTemplate x:Key="TabBarNavigationViewMenuItem">
-        <controlsPlatform:TabBarNavigationViewItem
+        <controlsPlatform:MauiNavigationViewItem
             x:Name="navViewItem"
             Content="{Binding Content}"
             Background="{Binding Background}" 

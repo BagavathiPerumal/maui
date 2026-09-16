@@ -31,6 +31,10 @@ namespace Microsoft.Maui.Controls.Handlers
 		IShellAppearanceElement? _shellAppearanceElement;
 		readonly HashSet<ShellSection> _trackedShellSections = new();
 
+		// Prevents NavigationView.SelectedItem from being updated while
+		// a hierarchical overflow item is being invoked.
+		bool _isHandlingOverflowItem;
+
 		public ShellItemHandler() : base(Mapper, CommandMapper)
 		{
 			_mainLevelTabs = new ObservableCollection<NavigationViewItemViewModel>();
@@ -77,7 +81,10 @@ namespace Microsoft.Maui.Controls.Handlers
 			base.ConnectHandler(platformView);
 
 			if (mauiNavView is not null)
+			{
 				mauiNavView.SelectionChanged += OnNavigationTabChanged;
+				mauiNavView.ItemInvoked += OnNavigationItemInvoked;
+			}
 
 			if (VirtualView.Parent is Shell shell)
 			{
@@ -92,6 +99,8 @@ namespace Microsoft.Maui.Controls.Handlers
 			if (platformView is MauiNavigationView mnv)
 			{
 				mnv.SelectionChanged -= OnNavigationTabChanged;
+				mnv.ItemInvoked -= OnNavigationItemInvoked;
+
 				if (mnv.AutoSuggestBox is { } autoSuggestBox)
 				{
 					autoSuggestBox.TextChanged -= OnSearchBoxTextChanged;
@@ -172,6 +181,34 @@ namespace Microsoft.Maui.Controls.Handlers
 		private void OnItemsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
 		{
 			MapMenuItems();
+		}
+
+		void OnNavigationItemInvoked(
+		NavigationView sender,
+		NavigationViewItemInvokedEventArgs args)
+		{
+			if (args.InvokedItemContainer?.DataContext is not NavigationViewItemViewModel item ||
+			item.Data is not ShellSection shellSection)
+			{
+				return;
+			}
+
+			// NavigationView is currently processing the ItemInvoked event.
+			// Defer Shell navigation so that NavigationView.SelectedItem is not
+			// modified while WinUI is processing the overflow item.
+			sender.DispatcherQueue.TryEnqueue(() =>
+			{
+				_isHandlingOverflowItem = true;
+
+				try
+				{
+					((IShellItemController)VirtualView).ProposeSection(shellSection);
+				}
+				finally
+				{
+					_isHandlingOverflowItem = false;
+				}
+			});
 		}
 
 		private void OnNavigationTabChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -320,8 +357,14 @@ namespace Microsoft.Maui.Controls.Handlers
 				}
 			});
 
-			if (PlatformView is NavigationView navView && navView.SelectedItem != selectedItem)
+			// Do not update NavigationView.SelectedItem while an overflow
+			// hierarchical item is being processed by WinUI.
+			if (!_isHandlingOverflowItem &&
+	  PlatformView is NavigationView navView &&
+	  navView.SelectedItem != selectedItem)
+			{
 				navView.SelectedItem = selectedItem;
+			}
 
 			UpdateValue(Shell.TabBarIsVisibleProperty.PropertyName);
 		}
@@ -666,7 +709,7 @@ namespace Microsoft.Maui.Controls.Handlers
 
 		void OnCurrentShellSectionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
 		{
-			if (_mainLevelTabs == null)
+			if (_mainLevelTabs == null || _isHandlingOverflowItem)
 				return;
 
 			var currentItem = VirtualView.CurrentItem.CurrentItem;

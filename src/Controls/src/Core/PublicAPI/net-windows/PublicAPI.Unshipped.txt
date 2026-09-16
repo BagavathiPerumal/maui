@@ -8,5 +8,5 @@ Microsoft.Maui.Controls.IndicatorView.~IndicatorView() -> void
 override Microsoft.Maui.Controls.Handlers.Items.CarouselViewHandler.UpdateEmptyViewVisibility() -> void
 ~override Microsoft.Maui.Controls.SwipeItems.OnPropertyChanged(string propertyName = null) -> void
 Microsoft.Maui.Controls.Label.~Label() -> void
-Microsoft.Maui.Controls.Platform.TabBarNavigationViewItem
-Microsoft.Maui.Controls.Platform.TabBarNavigationViewItem.TabBarNavigationViewItem() -> void
+Microsoft.Maui.Controls.Platform.MauiNavigationViewItem
+Microsoft.Maui.Controls.Platform.MauiNavigationViewItem.MauiNavigationViewItem() -> void

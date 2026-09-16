@@ -5,9 +5,9 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace Microsoft.Maui.Controls.Platform;
 
-public partial class TabBarNavigationViewItem : NavigationViewItem
+public partial class MauiNavigationViewItem : NavigationViewItem
 {
-	public TabBarNavigationViewItem()
+	public MauiNavigationViewItem()
 	{
 		RegisterPropertyChangedCallback(MenuItemsSourceProperty, OnMenuItemsSourceChanged);
 		UpdateSelectsOnInvoked();
