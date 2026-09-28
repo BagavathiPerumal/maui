@@ -15,7 +15,6 @@ namespace Microsoft.Maui.TestCases.Tests.Issues
 		[Category(UITestCategories.Shell)]
 		public void FlyoutHeaderAdaptsToMinimumHeight()
 		{
-			var heightReferenceLabel = App.WaitForElement("HeightReferenceLabel").GetRect();
 			var headerLabel = App.WaitForElement("HeaderLabel").GetRect();
 
 			ClassicAssert.Greater(heightReferenceLabel.Height, 0,
