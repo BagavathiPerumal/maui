@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace Microsoft.Maui.Controls.Core.UnitTests
@@ -85,6 +87,46 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 		}
 	}
 
+	class ConcurrentPropertyElement : Element
+	{
+		public static readonly BindableProperty FirstProperty =
+			BindableProperty.Create(nameof(First), typeof(int), typeof(ConcurrentPropertyElement), 0, propertyChanged: OnPropertyChanged);
+
+		public static readonly BindableProperty SecondProperty =
+			BindableProperty.Create(nameof(Second), typeof(int), typeof(ConcurrentPropertyElement), 0, propertyChanged: OnPropertyChanged);
+
+		public int First
+		{
+			get => (int)GetValue(FirstProperty);
+			set => SetValue(FirstProperty, value);
+		}
+
+		public int Second
+		{
+			get => (int)GetValue(SecondProperty);
+			set => SetValue(SecondProperty, value);
+		}
+
+		public Action PropertyChangedCallback { get; set; }
+
+		public int HandlerUpdateCount => _handlerUpdateCount;
+
+		int _handlerUpdateCount;
+
+		static void OnPropertyChanged(BindableObject bindable, object oldValue, object newValue) =>
+			((ConcurrentPropertyElement)bindable).PropertyChangedCallback?.Invoke();
+
+		private protected override void UpdateHandlerValue(string propertyName, bool valueChanged)
+		{
+			if (propertyName == FirstProperty.PropertyName || propertyName == SecondProperty.PropertyName)
+			{
+				Interlocked.Increment(ref _handlerUpdateCount);
+			}
+
+			base.UpdateHandlerValue(propertyName, valueChanged);
+		}
+	}
+
 	public class ElementTests
 		: BaseTestFixture
 	{
@@ -123,6 +165,31 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 
 			element.TrackPropertyChangedDelegate = 1;
 			Assert.Equal(2, element.TrackPropertyChangedUpdateHandlerValueCount);
+		}
+
+		[Fact]
+		public async Task ConcurrentBindablePropertyChangesDoNotSerializePropertyChangedCallbacks()
+		{
+			var element = new ConcurrentPropertyElement();
+			using var callbacksEntered = new CountdownEvent(2);
+			using var releaseCallbacks = new ManualResetEventSlim();
+
+			element.PropertyChangedCallback = () =>
+			{
+				callbacksEntered.Signal();
+				releaseCallbacks.Wait(TimeSpan.FromSeconds(5));
+			};
+
+			var firstSet = Task.Run(() => element.First = 1);
+			var secondSet = Task.Run(() => element.Second = 1);
+
+			bool callbacksRanConcurrently = callbacksEntered.Wait(TimeSpan.FromSeconds(5));
+			releaseCallbacks.Set();
+
+			await Task.WhenAll(firstSet, secondSet);
+
+			Assert.True(callbacksRanConcurrently);
+			Assert.Equal(2, element.HandlerUpdateCount);
 		}
 
 		[Fact]
