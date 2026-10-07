@@ -253,12 +253,13 @@ namespace Microsoft.Maui.DeviceTests
 				Content = new Label { Text = "Replacement page" }
 			};
 			var shell = new Shell { CurrentItem = shellPage };
-			var window = new Window(shell);
-
-			shellPage.Loaded += OnShellPageLoaded;
+			var window = new Window(new ContentPage());
 
 			await CreateHandlerAndAddToWindow<WindowHandlerStub>(window, async handler =>
 			{
+				shellPage.Loaded += OnShellPageLoaded;
+				window.Page = shell;
+
 				await OnLoadedAsync(replacementPage);
 				AssertPageAttachedToRoot(replacementPage, handler.MauiContext.GetNavigationRootManager());
 			});
@@ -289,12 +290,13 @@ namespace Microsoft.Maui.DeviceTests
 			{
 				Content = new Label { Text = "Replacement page" }
 			};
-			var window = new Window(rootPage);
-
-			detailPage.Loaded += OnDetailPageLoaded;
+			var window = new Window(new ContentPage());
 
 			await CreateHandlerAndAddToWindow<WindowHandlerStub>(window, async handler =>
 			{
+				detailPage.Loaded += OnDetailPageLoaded;
+				window.Page = rootPage;
+
 				await OnLoadedAsync(replacementPage);
 				AssertPageAttachedToRoot(replacementPage, handler.MauiContext.GetNavigationRootManager());
 			});

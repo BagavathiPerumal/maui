@@ -745,7 +745,11 @@ namespace Microsoft.Maui.Controls
 
 			if (oldPage?.IsLoaded == true)
 			{
-				this.OnUnloaded(() => oldPage.DisconnectHandlers());
+				var disconnectDeferred = false;
+				DeferLoadedPageDisconnect(oldPage, ref disconnectDeferred);
+
+				if (!disconnectDeferred)
+					this.OnUnloaded(oldPage.DisconnectHandlers);
 			}
 			else
 			{
@@ -754,6 +758,8 @@ namespace Microsoft.Maui.Controls
 
 			Handler?.UpdateValue(nameof(IWindow.FlowDirection));
 		}
+
+		partial void DeferLoadedPageDisconnect(Page page, ref bool disconnectDeferred);
 
 		void OnPageHandlerChanged(object? sender, EventArgs e)
 		{

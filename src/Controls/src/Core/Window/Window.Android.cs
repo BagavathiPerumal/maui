@@ -19,6 +19,18 @@ namespace Microsoft.Maui.Controls
 		internal Activity PlatformActivity =>
 			(Handler?.PlatformView as Activity) ?? throw new InvalidOperationException("Window should have an Activity set.");
 
+		partial void DeferLoadedPageDisconnect(Page page, ref bool disconnectDeferred)
+		{
+			if (Handler is IPlatformViewHandler { PlatformView: not null } ||
+				page.Handler is not IPlatformViewHandler { PlatformView: not null })
+			{
+				return;
+			}
+
+			page.OnUnloaded(page.DisconnectHandlers);
+			disconnectDeferred = true;
+		}
+
 		[Obsolete]
 		public static void MapContent(WindowHandler handler, IWindow view)
 		{
