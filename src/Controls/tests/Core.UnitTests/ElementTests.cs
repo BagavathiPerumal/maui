@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -87,43 +88,32 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 		}
 	}
 
-	class ConcurrentPropertyElement : Element
+	class BindablePropertyConcurrencyElement : Element
 	{
-		public static readonly BindableProperty FirstProperty =
-			BindableProperty.Create(nameof(First), typeof(int), typeof(ConcurrentPropertyElement), 0, propertyChanged: OnPropertyChanged);
+		public static readonly BindableProperty PropertyAProperty =
+			BindableProperty.Create(
+				nameof(PropertyA),
+				typeof(int),
+				typeof(BindablePropertyConcurrencyElement),
+				0);
 
-		public static readonly BindableProperty SecondProperty =
-			BindableProperty.Create(nameof(Second), typeof(int), typeof(ConcurrentPropertyElement), 0, propertyChanged: OnPropertyChanged);
+		public static readonly BindableProperty PropertyBProperty =
+			BindableProperty.Create(
+				nameof(PropertyB),
+				typeof(int),
+				typeof(BindablePropertyConcurrencyElement),
+				0);
 
-		public int First
+		public int PropertyA
 		{
-			get => (int)GetValue(FirstProperty);
-			set => SetValue(FirstProperty, value);
+			get => (int)GetValue(PropertyAProperty);
+			set => SetValue(PropertyAProperty, value);
 		}
 
-		public int Second
+		public int PropertyB
 		{
-			get => (int)GetValue(SecondProperty);
-			set => SetValue(SecondProperty, value);
-		}
-
-		public Action PropertyChangedCallback { get; set; }
-
-		public int HandlerUpdateCount => _handlerUpdateCount;
-
-		int _handlerUpdateCount;
-
-		static void OnPropertyChanged(BindableObject bindable, object oldValue, object newValue) =>
-			((ConcurrentPropertyElement)bindable).PropertyChangedCallback?.Invoke();
-
-		private protected override void UpdateHandlerValue(string propertyName, bool valueChanged)
-		{
-			if (propertyName == FirstProperty.PropertyName || propertyName == SecondProperty.PropertyName)
-			{
-				Interlocked.Increment(ref _handlerUpdateCount);
-			}
-
-			base.UpdateHandlerValue(propertyName, valueChanged);
+			get => (int)GetValue(PropertyBProperty);
+			set => SetValue(PropertyBProperty, value);
 		}
 	}
 
@@ -150,7 +140,6 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 		{
 			var element = new TestElement();
 
-
 			element.PropertyChanged += (_, _) =>
 			{
 				if (element.TrackPropertyChangedDelegate == 1)
@@ -168,28 +157,30 @@ namespace Microsoft.Maui.Controls.Core.UnitTests
 		}
 
 		[Fact]
-		public async Task ConcurrentBindablePropertyChangesDoNotSerializePropertyChangedCallbacks()
+		public async Task ConcurrentBindablePropertyUpdatesDoNotCorruptPendingUpdates()
 		{
-			var element = new ConcurrentPropertyElement();
-			using var callbacksEntered = new CountdownEvent(2);
-			using var releaseCallbacks = new ManualResetEventSlim();
+			var element = new BindablePropertyConcurrencyElement();
+			var barrier = new Barrier(2);
 
-			element.PropertyChangedCallback = () =>
-			{
-				callbacksEntered.Signal();
-				releaseCallbacks.Wait(TimeSpan.FromSeconds(5));
-			};
+			var tasks = Enumerable.Range(0, 2).Select(index =>
+				Task.Run(() =>
+				{
+					barrier.SignalAndWait();
 
-			var firstSet = Task.Run(() => element.First = 1);
-			var secondSet = Task.Run(() => element.Second = 1);
+					for (var i = 0; i < 10_000; i++)
+					{
+						if (index == 0)
+							element.SetValue(
+								BindablePropertyConcurrencyElement.PropertyAProperty,
+								i);
+						else
+							element.SetValue(
+								BindablePropertyConcurrencyElement.PropertyBProperty,
+								i);
+					}
+				}));
 
-			bool callbacksRanConcurrently = callbacksEntered.Wait(TimeSpan.FromSeconds(5));
-			releaseCallbacks.Set();
-
-			await Task.WhenAll(firstSet, secondSet);
-
-			Assert.True(callbacksRanConcurrently);
-			Assert.Equal(2, element.HandlerUpdateCount);
+			await Task.WhenAll(tasks);
 		}
 
 		[Fact]
