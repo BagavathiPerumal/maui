@@ -21,6 +21,7 @@ namespace Microsoft.Maui.Controls
 
 		partial void HandleLoadedPageDisconnect(Page page, ref bool disconnectHandled)
 		{
+			// Android WindowHandler wraps an Activity, not a View with an unload event.
 			if (Handler is IPlatformViewHandler { PlatformView: not null })
 			{
 				return;
@@ -28,7 +29,14 @@ namespace Microsoft.Maui.Controls
 
 			if (page.Handler is IPlatformViewHandler { PlatformView: not null })
 			{
-				page.OnUnloaded(page.DisconnectHandlers);
+				var outgoingHandler = page.Handler;
+				page.OnUnloaded(() =>
+				{
+					if (ReferenceEquals(page.Handler, outgoingHandler) &&
+						((IVisualTreeElement)page).GetVisualParent() is null &&
+						!page.IsLoaded)
+						page.DisconnectHandlers();
+				});
 			}
 			else
 			{
