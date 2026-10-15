@@ -1,4 +1,3 @@
-#if IOS
 using NUnit.Framework;
 using UITest.Appium;
 using UITest.Core;
@@ -39,4 +38,3 @@ public class Issue37441 : _IssuesUITest
 		Assert.That(status, Is.EqualTo("PASS"), $"Unexpected scenario result: {status}");
 	}
 }
-#endif
