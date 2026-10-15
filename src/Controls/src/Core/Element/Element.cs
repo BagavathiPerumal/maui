@@ -722,11 +722,6 @@ namespace Microsoft.Maui.Controls
 				if (willFirePropertyChanged)
 				{
 					s_pendingHandlerUpdatesFromBPSet.Pop();
-
-					if (s_pendingHandlerUpdatesFromBPSet.Count == 0)
-					{
-						s_pendingHandlerUpdatesFromBPSet = null;
-					}
 				}
 			}
 
