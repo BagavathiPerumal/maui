@@ -1,6 +1,6 @@
 namespace Maui.Controls.Sample.Issues;
 
-[Issue(IssueTracker.Github, 37441, "Concurrent bindable property updates and off-thread visual state changes", PlatformAffected.iOS)]
+[Issue(IssueTracker.Github, 37441, "Concurrent bindable property updates and off-thread visual state changes", PlatformAffected.All)]
 public class Issue37441 : ContentPage
 {
 	static readonly TimeSpan ScenarioDuration = TimeSpan.FromSeconds(3);
