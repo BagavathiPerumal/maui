@@ -223,6 +223,7 @@ namespace Microsoft.Maui.Controls.Platform
 					}
 
 					var platform = newPage.ToPlatform();
+
 					if (popping &&
 						newPage is Shell shell &&
 						shell.Navigation.ModalStack.Count == 0 &&
