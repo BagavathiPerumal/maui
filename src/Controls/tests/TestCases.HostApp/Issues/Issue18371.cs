@@ -27,28 +27,30 @@ public class Issue18371 : TestShell
 
 		openModal.Clicked += async (_, _) =>
 		{
-			await GoToAsync("//Issue18371Startup/Issue18371Welcome");
-			var modal = (WelcomePage)CurrentPage;
-			modal.ReturnButton.Clicked += async (_, _) => await GoToAsync("//Issue18371Main");
+			await Dispatcher.DispatchAsync(() => GoToAsync("//Issue18371Startup/Issue18371Welcome"));
 		};
 	}
 
 	public class WelcomePage : ContentPage
 	{
-		public Button ReturnButton { get; } = new Button
-		{
-			AutomationId = "ReturnHome",
-			Text = "Now press me!",
-			Margin = 32
-		};
-
 		public WelcomePage()
 		{
+			BackgroundColor = Colors.White;
+
+			var returnButton = new Button
+			{
+				AutomationId = "ReturnHome",
+				Text = "Now press me!",
+				Margin = 32
+			};
+			returnButton.Clicked += async (_, _) =>
+				await Dispatcher.DispatchAsync(() => Shell.Current.GoToAsync("//Issue18371Main"));
+
 			Shell.SetPresentationMode(this, PresentationMode.Modal);
 			Content = new VerticalStackLayout
 			{
 				VerticalOptions = LayoutOptions.End,
-				Children = { ReturnButton }
+				Children = { returnButton }
 			};
 		}
 	}

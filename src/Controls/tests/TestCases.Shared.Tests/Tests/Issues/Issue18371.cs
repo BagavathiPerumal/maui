@@ -1,4 +1,3 @@
-#if TEST_FAILS_ON_WINDOWS // The modal-return scenario does not navigate back reliably in the Windows UI test host.
 using NUnit.Framework;
 using UITest.Appium;
 using UITest.Core;
@@ -26,4 +25,3 @@ public class Issue18371 : _IssuesUITest
 		VerifyScreenshot();
 	}
 }
-#endif
