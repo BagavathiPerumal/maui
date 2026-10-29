@@ -39,6 +39,9 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 		bool _hasCurrentItemUpdateFromCollection;
 		object _currentItemUpdateFromCollection;
 		object _collectionCurrentItemOverride;
+		bool _isCollectionReplacementScrollPending;
+		bool _hasCollectionReplacementLayout;
+		ListViewBase _collectionReplacementLayoutView;
 		global::Windows.Foundation.Collections.IObservableVector<object> _collectionCurrentItemOverrideItems;
 		int _collectionCurrentItemOverridePosition = -1;
 		int _collectionCurrentItemOverrideVersion = -1;
@@ -78,6 +81,10 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 
 		LinearItemsLayout CarouselItemsLayout => ItemsView?.ItemsLayout;
 		WDataTemplate CarouselItemsViewTemplate => (WDataTemplate)WApp.Current.Resources["CarouselItemsViewDefaultTemplate"];
+
+		bool IsCollectionSelectionProtected => _collectionCurrentItemOverride is not null
+			&& _collectionCurrentItemOverridePosition == ItemsView.Position
+			&& ReferenceEquals(_collectionCurrentItemOverride, ItemsView.CurrentItem);
 
 		protected override void ConnectHandler(ListViewBase platformView)
 		{
@@ -487,6 +494,20 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 				ItemsView.Position = position;
 		}
 
+		void SetCarouselViewPositionFromCollection(int position)
+		{
+			var wasPositionUpdateFromCollection = _isPositionUpdateFromCollection;
+			_isPositionUpdateFromCollection = true;
+			try
+			{
+				SetCarouselViewPosition(position);
+			}
+			finally
+			{
+				_isPositionUpdateFromCollection = wasPositionUpdateFromCollection;
+			}
+		}
+
 		void SetCarouselViewCurrentItem(int carouselPosition)
 		{
 			if (!IsValidPosition(carouselPosition))
@@ -585,7 +606,10 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			if (CollectionViewSource == null)
 				return;
 
-			if (_collectionCurrentItemOverride is not null)
+			var hasPendingCollectionCurrentItemOverride = _collectionCurrentItemOverride is not null;
+			var isCollectionReplacementScrollPending = _isCollectionReplacementScrollPending;
+			var hasCollectionReplacementLayout = _hasCollectionReplacementLayout;
+			if (hasPendingCollectionCurrentItemOverride)
 			{
 				if (ReferenceEquals(_collectionCurrentItemOverride, ItemsView.CurrentItem))
 					return;
@@ -618,6 +642,30 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 
 			if (!IsValidPosition(currentItemPosition))
 			{
+				return;
+			}
+
+			if (hasPendingCollectionCurrentItemOverride)
+			{
+				// An application selection after replacement must use the same protected native reconciliation.
+				var currentItem = ItemsView.CurrentItem;
+				var collectionChangeVersion = _collectionChangeVersion;
+				_collectionCurrentItemOverride = currentItem;
+				_collectionCurrentItemOverridePosition = currentItemPosition;
+				_isCollectionReplacementScrollPending = isCollectionReplacementScrollPending;
+				_hasCollectionReplacementLayout = hasCollectionReplacementLayout;
+				SetCarouselViewPositionFromCollection(currentItemPosition);
+
+				var itemsView = ((IElementHandler)this).VirtualView as CarouselView;
+				if (itemsView is not null
+					&& collectionChangeVersion == _collectionChangeVersion
+					&& ReferenceEquals(_collectionCurrentItemOverride, currentItem)
+					&& ReferenceEquals(itemsView.CurrentItem, currentItem)
+					&& itemsView.Position == currentItemPosition)
+				{
+					QueueCollectionCurrentItemOverrideScroll(currentItem, currentItemPosition, collectionChangeVersion);
+				}
+
 				return;
 			}
 
@@ -794,9 +842,7 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			if (ItemsView.Loop && _loopableCollectionView?.RealCount > 0)
 				position %= _loopableCollectionView.RealCount;
 
-			if (_collectionCurrentItemOverride is not null
-				&& _collectionCurrentItemOverridePosition == ItemsView.Position
-				&& ReferenceEquals(_collectionCurrentItemOverride, ItemsView.CurrentItem))
+			if (IsCollectionSelectionProtected)
 			{
 				return;
 			}
@@ -884,6 +930,13 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			if (e.IsIntermediate)
 				return;
 
+			if (_collectionReplacementLayoutView is not null
+				&& _collectionCurrentItemOverride is not null)
+			{
+				RequeueCollectionCurrentItemOverrideScroll();
+				return;
+			}
+
 			var centerItemIndexFromScroll = _centerItemIndexFromScroll;
 			_centerItemIndexFromScroll = -1;
 			bool preferCenterItemIndexFromScroll = false;
@@ -968,6 +1021,11 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			if (!InitialPositionSet
 				|| _gotoPosition != -1
 				|| !ShouldCenterCarouselItem())
+			{
+				return;
+			}
+
+			if (IsCollectionSelectionProtected)
 			{
 				return;
 			}
@@ -1151,13 +1209,17 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 					_isCollectionChanged = true;
 				}
 
-				if (itemsView.ItemsUpdatingScrollMode == ItemsUpdatingScrollMode.KeepLastItemInView)
+				// Replacing items preserves their positions and must not reset the current item.
+				if (e.Action != NotifyCollectionChangedAction.Replace)
 				{
-					carouselPosition = count == 0 ? 0 : count - 1;
-				}
-				else if (itemsView.ItemsUpdatingScrollMode == ItemsUpdatingScrollMode.KeepItemsInView)
-				{
-					carouselPosition = 0;
+					if (itemsView.ItemsUpdatingScrollMode == ItemsUpdatingScrollMode.KeepLastItemInView)
+					{
+						carouselPosition = count == 0 ? 0 : count - 1;
+					}
+					else if (itemsView.ItemsUpdatingScrollMode == ItemsUpdatingScrollMode.KeepItemsInView)
+					{
+						carouselPosition = 0;
+					}
 				}
 
 				object collectionCurrentItem = null;
@@ -1182,16 +1244,7 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 				}
 
 				var currentItemBeforePositionUpdate = itemsView.CurrentItem;
-				var wasPositionUpdateFromCollection = _isPositionUpdateFromCollection;
-				_isPositionUpdateFromCollection = true;
-				try
-				{
-					SetCarouselViewPosition(carouselPosition);
-				}
-				finally
-				{
-					_isPositionUpdateFromCollection = wasPositionUpdateFromCollection;
-				}
+				SetCarouselViewPositionFromCollection(carouselPosition);
 
 				if (!ReferenceEquals(((IElementHandler)this).VirtualView, itemsView))
 					return;
@@ -1214,16 +1267,7 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 					{
 						carouselPosition = overriddenCurrentItemPosition;
 						currentItemOverridden = true;
-						wasPositionUpdateFromCollection = _isPositionUpdateFromCollection;
-						_isPositionUpdateFromCollection = true;
-						try
-						{
-							SetCarouselViewPosition(carouselPosition);
-						}
-						finally
-						{
-							_isPositionUpdateFromCollection = wasPositionUpdateFromCollection;
-						}
+						SetCarouselViewPositionFromCollection(carouselPosition);
 
 						if (!ReferenceEquals(((IElementHandler)this).VirtualView, itemsView))
 							return;
@@ -1233,9 +1277,16 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 				if (collectionChangeVersion != _collectionChangeVersion)
 					return;
 
-				if (currentItemOverridden)
+				// WinUI can temporarily shrink the extent during replacement and clamp the offset.
+				// Restore the selected item after the native projection updates instead of adopting that offset.
+				if (currentItemOverridden
+					|| (e.Action == NotifyCollectionChangedAction.Replace
+						&& IsValidPosition(carouselPosition)
+						&& itemsView.CurrentItem is not null))
 				{
 					_collectionCurrentItemOverride = itemsView.CurrentItem;
+					_isCollectionReplacementScrollPending = e.Action == NotifyCollectionChangedAction.Replace;
+					_hasCollectionReplacementLayout = false;
 					QueueCollectionCurrentItemOverrideScroll(
 						_collectionCurrentItemOverride,
 						carouselPosition,
@@ -1264,6 +1315,12 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			QueueCollectionCurrentItemOverrideScrollCore(currentItem, position, collectionChangeVersion);
 		}
 
+		void RequeueCollectionCurrentItemOverrideScroll() =>
+			QueueCollectionCurrentItemOverrideScrollCore(
+				_collectionCurrentItemOverride,
+				_collectionCurrentItemOverridePosition,
+				_collectionCurrentItemOverrideVersion);
+
 		void QueueCollectionCurrentItemOverrideScrollCore(
 			object currentItem,
 			int position,
@@ -1285,6 +1342,12 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 						_collectionCurrentItemOverrideItemsChanged);
 				}
 			}
+
+			var waitForReplacementLayout = _isCollectionReplacementScrollPending
+				&& ((IElementHandler)this).VirtualView is CarouselView { Loop: false }
+				&& position == ItemCount - 1
+				&& ListViewBase is not null;
+			SetCollectionReplacementLayoutView(waitForReplacementLayout ? ListViewBase : null);
 
 			var queueVersion = ++_collectionCurrentItemOverrideQueueVersion;
 			var dispatcherQueue = ListViewBase?.DispatcherQueue;
@@ -1339,6 +1402,12 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 				return;
 			}
 
+			var isLastItemReplacement = _isCollectionReplacementScrollPending
+				&& !itemsView.Loop
+				&& position == ItemCount - 1;
+			if (isLastItemReplacement && !_hasCollectionReplacementLayout)
+				return;
+
 			if (ListViewBase.ItemsPanelRoot is not ItemsStackPanel itemsPanel
 				|| !IsCollectionCurrentItemOverrideVisible(itemsView, position, itemsPanel))
 			{
@@ -1359,6 +1428,44 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 				}
 
 				ScheduleCollectionCurrentItemOverrideRetry();
+				return;
+			}
+
+			if (isLastItemReplacement)
+			{
+				if (_scrollViewer is null
+					|| !TryGetClosestVisibleItem(position, out var nativeIndex, out var horizontalOffset,
+						out var verticalOffset, out var distance)
+					|| ListViewBase.ContainerFromIndex(nativeIndex) is not FrameworkElement container)
+				{
+					return;
+				}
+
+				// A visible replacement can still have its temporary content-sized width or height.
+				var isHorizontal = CarouselItemsLayout.Orientation == ItemsLayoutOrientation.Horizontal;
+				var expectedSize = isHorizontal ? itemTemplateContext.ItemWidth : itemTemplateContext.ItemHeight;
+				var actualSize = isHorizontal ? container.ActualWidth : container.ActualHeight;
+				if (actualSize + CenteringTolerance < expectedSize)
+					return;
+
+				if (distance > CenteringTolerance)
+				{
+					_centerRequestVersion++;
+					_scrollViewer.ChangeView(horizontalOffset, verticalOffset, null, true);
+					if (queueVersion == _collectionCurrentItemOverrideQueueVersion
+						&& collectionChangeVersion == _collectionChangeVersion
+						&& ReferenceEquals(_collectionCurrentItemOverride, currentItem))
+					{
+						ScheduleCollectionCurrentItemOverrideRetry();
+					}
+					return;
+				}
+
+				// Release protection only after layout and the actual offset agree on the last item.
+				_centerRequestVersion++;
+				_centerItemIndexFromScroll = -1;
+				ResetRecenteringState();
+				ClearCollectionCurrentItemOverride();
 				return;
 			}
 
@@ -1400,7 +1507,8 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 		{
 			if (_collectionCurrentItemOverrideRetryCount >= MaxCollectionCurrentItemOverrideRetries)
 			{
-				ClearCollectionCurrentItemOverride();
+				if (_collectionReplacementLayoutView is null)
+					ClearCollectionCurrentItemOverride();
 				return;
 			}
 
@@ -1434,10 +1542,7 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			StopCollectionCurrentItemOverrideRetryTimer();
 			if (_collectionCurrentItemOverride is not null)
 			{
-				QueueCollectionCurrentItemOverrideScrollCore(
-					_collectionCurrentItemOverride,
-					_collectionCurrentItemOverridePosition,
-					_collectionCurrentItemOverrideVersion);
+				RequeueCollectionCurrentItemOverrideScroll();
 			}
 		}
 
@@ -1466,16 +1571,44 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			if (ReferenceEquals(sender, _collectionCurrentItemOverrideItems)
 				&& _collectionCurrentItemOverride is not null)
 			{
-				QueueCollectionCurrentItemOverrideScrollCore(
-					_collectionCurrentItemOverride,
-					_collectionCurrentItemOverridePosition,
-					_collectionCurrentItemOverrideVersion);
+				if (_isCollectionReplacementScrollPending)
+					_hasCollectionReplacementLayout = false;
+
+				RequeueCollectionCurrentItemOverrideScroll();
 			}
+		}
+
+		void OnCollectionReplacementLayoutUpdated(object sender, object args)
+		{
+			if (_collectionCurrentItemOverride is null
+				|| _collectionReplacementLayoutView is null
+				|| !ReferenceEquals(_collectionReplacementLayoutView, ListViewBase))
+			{
+				return;
+			}
+
+			_hasCollectionReplacementLayout = true;
+			RequeueCollectionCurrentItemOverrideScroll();
+		}
+
+		void SetCollectionReplacementLayoutView(ListViewBase layoutView)
+		{
+			if (ReferenceEquals(_collectionReplacementLayoutView, layoutView))
+				return;
+
+			if (_collectionReplacementLayoutView is { } previousLayoutView)
+				previousLayoutView.LayoutUpdated -= OnCollectionReplacementLayoutUpdated;
+
+			_collectionReplacementLayoutView = layoutView;
+			if (layoutView is { } currentLayoutView)
+				currentLayoutView.LayoutUpdated += OnCollectionReplacementLayoutUpdated;
 		}
 
 		void ClearCollectionCurrentItemOverride()
 		{
 			_collectionCurrentItemOverride = null;
+			_isCollectionReplacementScrollPending = false;
+			_hasCollectionReplacementLayout = false;
 			_collectionCurrentItemOverridePosition = -1;
 			_collectionCurrentItemOverrideVersion = -1;
 			_collectionCurrentItemOverrideQueueVersion++;
@@ -1486,6 +1619,8 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 		void StopWaitingForCollectionCurrentItemOverride()
 		{
 			StopCollectionCurrentItemOverrideRetryTimer();
+			SetCollectionReplacementLayoutView(null);
+
 			if (_collectionCurrentItemOverrideItems is not null)
 			{
 				_collectionCurrentItemOverrideProxy.Unsubscribe();

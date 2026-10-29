@@ -370,7 +370,10 @@ namespace Microsoft.Maui.Controls.Handlers.Items2
 			_gotoPosition = -1;
 
 			// We need to update the position while modifying the collection.
-			targetPosition = GetTargetPosition();
+			// Replacing items preserves their positions and must not reset the current item.
+			targetPosition = e.Action == NotifyCollectionChangedAction.Replace
+				? _positionAfterUpdate
+				: GetTargetPosition();
 
 			_positionAfterUpdate = -1;
 

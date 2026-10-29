@@ -133,6 +133,13 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			if (((IViewHandler)this).VirtualView is null || ListViewBase is null)
 				return;
 
+			// CarouselView replacements keep the current position, including the native viewport.
+			if (ItemsView is CarouselView
+				&& @event?.CollectionChange == global::Windows.Foundation.Collections.CollectionChange.ItemChanged)
+			{
+				return;
+			}
+
 			var mode = VirtualView.ItemsUpdatingScrollMode;
 
 			if (mode != ItemsUpdatingScrollMode.KeepItemsInView && mode != ItemsUpdatingScrollMode.KeepLastItemInView)
