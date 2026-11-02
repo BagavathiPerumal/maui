@@ -34,13 +34,13 @@ public class AndroidGraphicsPathMemoryTests
 			["control"] = await MeasurePssGrowthAsync(context.Canvas, "control", polygon, arcs)
 		};
 
-		foreach (var scenario in new[] { "clip-polygon", "clip-arcs", "fill-arcs" })
+		foreach (var scenario in new[] { "clip-polygon", "clip-arcs", "fill-arcs", "draw-arcs" })
 			growthByScenario[scenario] = await MeasurePssGrowthAsync(context.Canvas, scenario, polygon, arcs);
 
 		var controlGrowth = growthByScenario["control"];
 		var report = string.Join(", ", growthByScenario.Select(pair => $"{pair.Key}: {pair.Value} KB"));
 
-		foreach (var scenario in new[] { "clip-polygon", "clip-arcs", "fill-arcs" })
+		foreach (var scenario in new[] { "clip-polygon", "clip-arcs", "fill-arcs", "draw-arcs" })
 		{
 			Assert.True(
 				growthByScenario[scenario] - controlGrowth <= MaxPathGrowthBeyondControlKb,
@@ -94,6 +94,9 @@ public class AndroidGraphicsPathMemoryTests
 					break;
 				case "fill-arcs":
 					canvas.FillPath(arcs, WindingMode.NonZero);
+					break;
+				case "draw-arcs":
+					canvas.DrawPath(arcs);
 					break;
 				default:
 					throw new ArgumentOutOfRangeException(nameof(scenario), scenario, "Unknown drawing scenario.");
