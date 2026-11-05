@@ -5,8 +5,10 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Xml;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.Maui.Controls.Xaml;
 
 namespace Microsoft.Maui.Controls.SourceGen;
@@ -149,6 +151,11 @@ $$"""
 					{
 						WriteMultiLineString(codeWriter, localMethod);
 						codeWriter.WriteLine();
+					}
+
+					foreach (var source in sgcontext.StaticMemberSources)
+					{
+						sourceProductionContext.AddSource(source.Key, SourceText.From(source.Value, Encoding.UTF8));
 					}
 
 					// Emit Register calls and the content-identity stamp for incremental hot reload

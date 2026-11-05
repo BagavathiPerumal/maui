@@ -106,6 +106,8 @@ class SourceGenContext(IndentedTextWriter writer, Compilation compilation, Sourc
 	public IDictionary<ILocalValue, HashSet<string>> KeysInRD { get; } = new Dictionary<ILocalValue, HashSet<string>>();
 	public IDictionary<(ILocalValue, IFieldSymbol?, IPropertySymbol?), ILocalValue> VariablesProperties { get; } = new Dictionary<(ILocalValue, IFieldSymbol?, IPropertySymbol?), ILocalValue>();
 	public IList<string> LocalMethods { get; } = new List<string>();
+	readonly Dictionary<string, string> _staticMemberSources = new();
+	public Dictionary<string, string> StaticMemberSources => ParentContext?.StaticMemberSources ?? _staticMemberSources;
 	public ProjectItem ProjectItem { get; } = projectItem;
 
 	public Dictionary<string, int> lastIdForName = [];
