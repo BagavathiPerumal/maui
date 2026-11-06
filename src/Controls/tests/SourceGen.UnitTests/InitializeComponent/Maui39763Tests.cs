@@ -121,17 +121,9 @@ public class Maui39763Tests : SourceGenXamlInitializeComponentTestBase
 		Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
 		Assert.Empty(updatedCompilation.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
 
-		using var stream = new MemoryStream();
-		var emitResult = updatedCompilation.Emit(stream);
-		Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));
-		stream.Position = 0;
-		var loadContext = new AssemblyLoadContext(compilation.AssemblyName, isCollectible: true);
-		try
+		AssertGeneratedPage(updatedCompilation, page =>
 		{
-			var assembly = loadContext.LoadFromStream(stream);
-			var pageType = assembly.GetType("Test.TestPage", throwOnError: true)!;
-			var page = Assert.IsAssignableFrom<ContentPage>(Activator.CreateInstance(pageType));
-
+			var pageType = page.GetType();
 			Assert.Equal("Generated route", page.Title);
 			Assert.Equal(24d, pageType.GetProperty("NumericValue")!.GetValue(page));
 			Assert.Equal(42d, pageType.GetProperty("ConvertedValue")!.GetValue(page));
@@ -141,6 +133,105 @@ public class Maui39763Tests : SourceGenXamlInitializeComponentTestBase
 			Assert.Equal("Title", Assert.IsType<Binding>(pageType.GetProperty("StaticBinding")!.GetValue(page)).Path);
 			Assert.Equal(new[] { 24d, 42d }, Assert.IsAssignableFrom<IList<double>>(pageType.GetProperty("NumericValues")!.GetValue(page)));
 			Assert.Equal(24, Assert.IsType<int>(Assert.Single(Assert.IsAssignableFrom<IList<object>>(pageType.GetProperty("ObjectValues")!.GetValue(page)))));
+		});
+	}
+
+	[Theory]
+	[InlineData(true, "", "")]
+	[InlineData(true, "xmlns=\"http://schemas.microsoft.com/dotnet/maui/global\"", "")]
+	[InlineData(true, "xmlns=\"http://schemas.microsoft.com/dotnet/2021/maui\"", "generated:")]
+	[InlineData(false, "", "")]
+	[InlineData(false, "xmlns=\"http://schemas.microsoft.com/dotnet/maui/global\"", "")]
+	[InlineData(false, "xmlns=\"http://schemas.microsoft.com/dotnet/2021/maui\"", "generated:")]
+	public void GeneratedStaticItemsPreserveCollectionAndArrayTypes(bool useArray, string defaultNamespace, string prefix)
+	{
+		var compilation = SourceGeneratorDriver.CreateMauiCompilation($"Maui39763_{Guid.NewGuid():N}")
+			.AddSyntaxTrees(CSharpSyntaxTree.ParseText(
+				"""
+				using Microsoft.Maui.Controls;
+				[assembly: XmlnsDefinition("http://schemas.microsoft.com/dotnet/maui/global", "Test")]
+				[assembly: XmlnsDefinition("http://schemas.microsoft.com/dotnet/maui/global", "Test.Generated")]
+
+				namespace Test;
+
+				public partial class TestPage : ContentPage
+				{
+					public TestPage() => InitializeComponent();
+					public double[] Values { get; set; }
+					public LinearGradientBrush Brush { get; set; }
+				}
+				"""));
+		Assert.Null(compilation.GetTypeByMetadataName("Test.Generated.Routes"));
+
+		var content = useArray
+			? $$"""
+			    <local:TestPage.Values>
+			        <x:Array Type="{x:Type x:Double}">
+			            <x:Static Member="{{prefix}}Routes.Amount" />
+			            <x:Static Member="{{prefix}}Routes.Convertible" />
+			            <x:Static Member="{{prefix}}Routes.ExplicitlyConvertible" />
+			        </x:Array>
+			    </local:TestPage.Values>
+			"""
+			: $$"""
+			    <local:TestPage.Brush>
+			        <maui:LinearGradientBrush>
+			            <maui:LinearGradientBrush.GradientStops>
+			                <x:Static Member="{{prefix}}Routes.StartStop" />
+			                <x:Static Member="{{prefix}}Routes.EndStop" />
+			            </maui:LinearGradientBrush.GradientStops>
+			        </maui:LinearGradientBrush>
+			    </local:TestPage.Brush>
+			""";
+		var xamlFile = new AdditionalXamlFile("TestPage.xaml",
+			$$"""
+			<maui:ContentPage {{defaultNamespace}}
+			                  xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+			                  xmlns:maui="http://schemas.microsoft.com/dotnet/2021/maui"
+			                  xmlns:local="clr-namespace:Test"
+			                  xmlns:generated="clr-namespace:Test.Generated"
+			                  x:Class="Test.TestPage">
+			{{content}}
+			</maui:ContentPage>
+			""");
+		GeneratorDriver driver = CSharpGeneratorDriver.Create(
+			generators: [new XamlGenerator().AsSourceGenerator(), new RoutesGenerator()],
+			additionalTexts: [xamlFile.Text],
+			optionsProvider: SourceGeneratorDriver.CreateAnalyzerConfigOptionsProvider(xamlFile));
+		driver.RunGeneratorsAndUpdateCompilation(compilation, out var updatedCompilation, out var diagnostics);
+
+		Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+		Assert.Empty(updatedCompilation.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+		AssertGeneratedPage(updatedCompilation, page =>
+		{
+			if (useArray)
+			{
+				Assert.Equal(new[] { 24d, 42d, 84d }, Assert.IsType<double[]>(page.GetType().GetProperty("Values")!.GetValue(page)));
+			}
+			else
+			{
+				var brush = Assert.IsType<LinearGradientBrush>(page.GetType().GetProperty("Brush")!.GetValue(page));
+				Assert.Collection(brush.GradientStops,
+					stop => Assert.Equal(0f, stop.Offset),
+					stop => Assert.Equal(1f, stop.Offset));
+			}
+		});
+	}
+
+	static void AssertGeneratedPage(Compilation compilation, Action<ContentPage> assert)
+	{
+		using var stream = new MemoryStream();
+		var emitResult = compilation.Emit(stream);
+		Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));
+		stream.Position = 0;
+		var loadContext = new AssemblyLoadContext(compilation.AssemblyName, isCollectible: true);
+		try
+		{
+			var assembly = loadContext.LoadFromStream(stream);
+			var pageType = assembly.GetType("Test.TestPage", throwOnError: true)!;
+			var page = Assert.IsAssignableFrom<ContentPage>(Activator.CreateInstance(pageType));
+
+			assert(page);
 		}
 		finally
 		{
@@ -167,6 +258,8 @@ public class Maui39763Tests : SourceGenXamlInitializeComponentTestBase
 					public static ConvertibleAmount Convertible => new();
 					public static ExplicitlyConvertibleAmount ExplicitlyConvertible => new();
 					public static Microsoft.Maui.Controls.Binding TitleBinding => new("Title");
+					public static Microsoft.Maui.Controls.GradientStop StartStop => new() { Offset = 0 };
+					public static Microsoft.Maui.Controls.GradientStop EndStop => new() { Offset = 1 };
 				}
 
 				public readonly struct ConvertibleAmount

@@ -135,8 +135,17 @@ internal class KnownMarkups
 			return context.Compilation.ObjectType;
 		}
 
+		if (SymbolEqualityComparer.Default.Equals(parentType, context.Compilation.GetTypeByMetadataName("Microsoft.Maui.Controls.Xaml.ArrayExtension"))
+			&& parentNode.IsCollectionItem(node)
+			&& parentNode.Properties.TryGetValue(new XmlName("", "Type"), out var arrayTypeNode)
+			&& context.Types.TryGetValue(arrayTypeNode, out var arrayType))
+		{
+			return arrayType;
+		}
+
 		if (propertyName == XmlName.Empty && !node.TryGetPropertyName(parentNode, out propertyName))
 		{
+			asCollectionItem = parentNode.IsCollectionItem(node);
 			var contentProperty = parentType.GetContentPropertyName(context);
 			propertyName = new XmlName(parentNode.NamespaceURI, contentProperty);
 		}
@@ -148,24 +157,21 @@ internal class KnownMarkups
 			var bindableProperty = parentType.GetBindableProperty(propertyName.NamespaceURI, ref localName, out _, context, node);
 			var property = parentType.GetAllProperties(localName, context)
 				.FirstOrDefault(property => context.Compilation.IsSymbolAccessibleWithin(property, context.RootType));
-			// Bindable values may be bindings rather than the property's declared value type.
-			if (bindableProperty is not null
-				|| parentType.HasBindablePropertyHeuristic(localName, context, out _))
+			// A whole-property assignment may be a binding; collection items need the element type.
+			if (!asCollectionItem && (bindableProperty is not null
+				|| parentType.HasBindablePropertyHeuristic(localName, context, out _)))
 			{
 				return context.Compilation.ObjectType;
 			}
 
-			if (property is null)
-			{
-				return context.Compilation.ObjectType;
-			}
-
-			if (!asCollectionItem && property.SetMethod is { IsStatic: false } setter && setter.IsPublic())
+			if (!asCollectionItem && property?.SetMethod is { IsStatic: false } setter && setter.IsPublic())
 			{
 				return property.Type;
 			}
 
-			collectionType = property.Type;
+			collectionType = bindableProperty?.GetBPTypeAndConverter(context)?.type
+				?? property?.Type
+				?? context.Compilation.ObjectType;
 		}
 
 		if (!collectionType.InheritsFrom(context.Compilation.GetTypeByMetadataName("Microsoft.Maui.Controls.ResourceDictionary")!, context)
