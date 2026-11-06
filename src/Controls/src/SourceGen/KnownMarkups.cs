@@ -64,7 +64,8 @@ internal class KnownMarkups
 				&& context.XmlnsCache.ClrNamespacesForXmlns.TryGetValue(xmlType.NamespaceUri, out var namespaces)
 				&& namespaces.Count > 0)
 			{
-				value = GetDeferredStaticMember(xmlType, membername, namespaces, (IXmlLineInfo)markupNode, context);
+				returnType = GetDeferredStaticMemberTargetType(markupNode, context);
+				value = GetDeferredStaticMember(xmlType, membername, namespaces, returnType, (IXmlLineInfo)markupNode, context);
 				return true;
 			}
 
@@ -103,11 +104,85 @@ internal class KnownMarkups
 		return false;
 	}
 
-	static string GetDeferredStaticMember(XmlType xmlType, string member, IEnumerable<string> namespaces, IXmlLineInfo lineInfo, SourceGenContext context)
+	static ITypeSymbol GetDeferredStaticMemberTargetType(ElementNode node, SourceGenContext context)
+	{
+		var parent = node.Parent;
+		var propertyName = XmlName.Empty;
+		var asCollectionItem = false;
+		if (parent is ListNode list)
+		{
+			propertyName = list.XmlName;
+			if (propertyName == XmlName.Empty)
+			{
+				list.TryGetPropertyName(list.Parent, out propertyName);
+			}
+			asCollectionItem = list.CollectionItems.Count > 1;
+			parent = list.Parent;
+		}
+
+		if (parent is not ElementNode parentNode)
+		{
+			return context.Compilation.ObjectType;
+		}
+
+		var parentType = parentNode is RootNode
+			? context.RootType
+			: context.Variables.TryGetValue(parentNode, out var parentVariable)
+				? parentVariable.Type
+				: parentNode.XmlType.GetTypeSymbol(context);
+		if (parentType is null)
+		{
+			return context.Compilation.ObjectType;
+		}
+
+		if (propertyName == XmlName.Empty && !node.TryGetPropertyName(parentNode, out propertyName))
+		{
+			var contentProperty = parentType.GetContentPropertyName(context);
+			propertyName = new XmlName(parentNode.NamespaceURI, contentProperty);
+		}
+
+		ITypeSymbol collectionType = parentType;
+		if (propertyName.LocalName is not null)
+		{
+			var localName = propertyName.LocalName;
+			var bindableProperty = parentType.GetBindableProperty(propertyName.NamespaceURI, ref localName, out _, context, node);
+			var property = parentType.GetAllProperties(localName, context)
+				.FirstOrDefault(property => context.Compilation.IsSymbolAccessibleWithin(property, context.RootType));
+			// Bindable values may be bindings rather than the property's declared value type.
+			if (bindableProperty is not null
+				|| parentType.HasBindablePropertyHeuristic(localName, context, out _))
+			{
+				return context.Compilation.ObjectType;
+			}
+
+			if (property is null)
+			{
+				return context.Compilation.ObjectType;
+			}
+
+			if (!asCollectionItem && property.SetMethod is { IsStatic: false } setter && setter.IsPublic())
+			{
+				return property.Type;
+			}
+
+			collectionType = property.Type;
+		}
+
+		if (!collectionType.InheritsFrom(context.Compilation.GetTypeByMetadataName("Microsoft.Maui.Controls.ResourceDictionary")!, context)
+			&& collectionType.ImplementsGeneric(context.Compilation.GetTypeByMetadataName("System.Collections.Generic.IEnumerable`1")!, out var typeArguments))
+		{
+			return typeArguments[0];
+		}
+
+		return context.Compilation.ObjectType;
+	}
+
+	static string GetDeferredStaticMember(XmlType xmlType, string member, IEnumerable<string> namespaces, ITypeSymbol targetType, IXmlLineInfo lineInfo, SourceGenContext context)
 	{
 		// Other generators' types are unavailable here. Isolate the mapped namespaces in a helper
 		// so C# can resolve the static member (and diagnose missing or ambiguous types) afterwards.
-		var id = Crc64.ComputeHashString($"{context.ProjectItem.RelativePath}|{xmlType.NamespaceUri}|{xmlType.Name}|{member}");
+		var targetTypeName = targetType.ToFQDisplayString();
+		var id = Crc64.ComputeHashString($"{context.ProjectItem.RelativePath}|{xmlType.NamespaceUri}|{xmlType.Name}|{member}|{targetTypeName}");
 		var helperNamespace = $"__MauiXamlStaticMember_{id}";
 		var helperType = $"Accessor_{id}";
 		var helperMethod = $"GetValue_{id}";
@@ -136,9 +211,12 @@ internal class KnownMarkups
 			source.AppendLine($"\tinternal static class {helperType}");
 			source.AppendLine("\t{");
 			if (context.ProjectItem.EnableLineInfo && lineInfo.HasLineInfo())
+			{
 				source.AppendLine($"#line {lineInfo.LineNumber} {Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(context.ProjectItem.RelativePath!, quote: true)}");
+			}
 			var typeName = string.Join(".", xmlType.Name.Split('.').Select(GeneratorHelpers.EscapeIdentifier));
-			source.AppendLine($"\t\tinternal static object? {helperMethod}() => {typeName}.{GeneratorHelpers.EscapeIdentifier(member)};");
+			// Convert the original expression, not a boxed value, to preserve numeric and user-defined conversions.
+			source.AppendLine($"\t\tinternal static {targetTypeName} {helperMethod}() => ({targetTypeName}){typeName}.{GeneratorHelpers.EscapeIdentifier(member)}!;");
 			source.AppendLine("#line default");
 			source.AppendLine("\t}");
 			source.AppendLine("}");
