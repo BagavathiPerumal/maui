@@ -215,12 +215,18 @@ internal static class SafeAreaExtensions
 						}
 					}
 
-					// Bottom: how much the view extends into the bottom safe area
-					if (bottom > 0 && viewBottom > (screenHeight - bottom))
+					double bottomOffset = screenHeight - viewBottom;
+					if (SafeAreaEdges.IsSoftInput(GetSafeAreaRegionForEdge(3, layout)) &&
+						context.GetActivity()?.Window?.Attributes is WindowManagerLayoutParams attributes &&
+						MauiWindowInsetListener.ShouldApplyAnimatedImeInsets(attributes.SoftInputMode))
 					{
-						// Calculate the actual overlap amount
-						var bottomEdge = screenHeight - bottom;
-						bottom = Math.Min(viewBottom - bottomEdge, bottom);
+						bottomOffset = GetBottomSafeAreaOffsetPx(layout, context, view, viewLocation);
+					}
+
+					// Bottom insets are relative to the window, not the physical display.
+					if (bottom > 0 && bottomOffset < bottom)
+					{
+						bottom = GetBottomSafeAreaOverlapPx(bottom, bottomOffset);
 					}
 					else
 					{
@@ -338,29 +344,32 @@ internal static class SafeAreaExtensions
 		return newWindowInsets;
 	}
 
-	internal static bool ApplyAnimatedSoftInputInsetsPx(WindowInsetsCompat windowInsets, ICrossPlatformLayout crossPlatformLayout, Context context, View view, bool isImeOpening)
+	internal static double GetBottomSafeAreaOverlapPx(double bottomInset, double bottomOffset) =>
+		Math.Clamp(bottomInset - bottomOffset, 0, bottomInset);
+
+	internal static double GetBottomSafeAreaOffsetPx(
+		ICrossPlatformLayout crossPlatformLayout, Context context, View view, int[] location)
 	{
-		var bottomRegion = GetSafeAreaRegionForEdge(3, crossPlatformLayout);
-		if (!SafeAreaEdges.IsSoftInput(bottomRegion))
+		var height = view.Height > 0 ? view.Height : view.MeasuredHeight;
+		var root = view.IsAttachedToWindow ? view.RootView : context.GetActivity()?.Window?.DecorView;
+		if (height <= 0 || !root.IsAlive() || root.Height <= 0)
 		{
-			return false;
+			// Geometry will be reapplied after attachment/layout, just like settled insets.
+			return 0;
 		}
 
-		var keyboardBottom = windowInsets.GetKeyboardInsetsPx(context).Bottom;
-		var containerBottom = windowInsets.ToSafeAreaInsetsPx(context).Bottom;
+		root.GetLocationOnScreen(location);
+		var windowBottom = location[1] + root.Height;
+		view.GetLocationOnScreen(location);
+		var bottom = location[1] + height;
+		if (view.Width > 0 && view.Height > 0)
+		{
+			var margins = (GetSafeAreaView2(crossPlatformLayout) as IView)?.Margin ??
+				(GetSafeAreaElement(crossPlatformLayout) as IView)?.Margin ?? Thickness.Zero;
+			bottom += (int)context.ToPixels(margins.Bottom);
+		}
 
-		// While the keyboard is opening, track it directly so the container's bottom padding
-		// (and the viewport it controls) shrinks in step with every animation frame. Clamping
-		// to containerBottom here would hold the padding flat until keyboardBottom exceeds it,
-		// compressing the real shrink into the last few frames and clipping a focused editor.
-		// While closing, keep the containerBottom floor so padding doesn't dip below the
-		// resting container inset and pop back up once the animation ends.
-		var bottom = SafeAreaEdges.IsOnlySoftInput(bottomRegion) || isImeOpening
-			? keyboardBottom
-			: Math.Max(containerBottom, keyboardBottom);
-
-		view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, (int)bottom);
-		return bottom > 0;
+		return windowBottom - bottom;
 	}
 
 	internal static double GetSafeAreaForEdge(SafeAreaRegions safeAreaRegion, double originalSafeArea, int edge, bool isKeyboardShowing, SafeAreaPadding keyBoardInsets)

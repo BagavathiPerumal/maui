@@ -29,12 +29,12 @@ namespace Microsoft.Maui.Platform
 	internal class MauiWindowInsetListener : WindowInsetsAnimationCompat.Callback, IOnApplyWindowInsetsListener
 	{
 		readonly HashSet<AView> _trackedViews = [];
-		readonly HashSet<AView> _imeAnimationViews = [];
+		readonly Dictionary<AView, ImeAnimationView> _imeAnimationViews = [];
 		readonly HashSet<AView> _pendingFocusedViewRequests = [];
 		readonly HashSet<WindowInsetsAnimationCompat> _runningImeAnimations = [];
 		bool _imeAnimationStateInitialized;
 		bool _shouldApplyAnimatedImeInsets;
-		int _lastImeInsetBottom = -1;
+		int _imeAnimationVersion;
 
 		// Explicitly tracked (rather than derived from _runningImeAnimations.Count) so the gate
 		// can be held open for one extra main-looper turn after the last animation ends -- see
@@ -197,6 +197,28 @@ namespace Microsoft.Maui.Platform
 			return null;
 		}
 
+		static MauiWindowInsetListener? FindImeAnimationOwner(AView view)
+		{
+			MauiWindowInsetListener? owner = null;
+			var parent = view.Parent;
+			while (parent is AView parentView)
+			{
+				if (FindRegisteredListener(parentView) is { } listener)
+				{
+					foreach (var animatedView in listener._imeAnimationViews.Keys)
+					{
+						if (IsDescendantOf(view, animatedView))
+						{
+							owner = listener;
+							break;
+						}
+					}
+				}
+				parent = parentView.Parent;
+			}
+			return owner;
+		}
+
 		static bool HasExplicitSafeAreaEdges(AView view)
 		{
 			if (view is not ICrossPlatformLayoutBacking { CrossPlatformLayout: { } crossPlatformLayout })
@@ -275,6 +297,12 @@ namespace Microsoft.Maui.Platform
 		/// <param name="view">The view that attached</param>
 		internal void NotifyViewAttached(AView view)
 		{
+			if (FindImeAnimationOwner(view) is { } owner && !ReferenceEquals(owner, this))
+			{
+				owner.NotifyViewAttached(view);
+				return;
+			}
+
 			if (IsImeAnimating)
 			{
 				_viewsAttachedDuringImeAnimation.Add(view);
@@ -283,6 +311,12 @@ namespace Microsoft.Maui.Platform
 
 		public virtual WindowInsetsCompat? OnApplyWindowInsets(AView? v, WindowInsetsCompat? insets)
 		{
+			// Only share the gate when an ancestor already handles this subtree's IME padding.
+			if (v.IsAlive() && FindImeAnimationOwner(v) is { } owner && !ReferenceEquals(owner, this))
+			{
+				return owner.OnApplyWindowInsets(v, insets);
+			}
+
 			// Empty insets still reach a tracked view: once the keyboard closes on a window with
 			// no system bars (immersive, tablet in desktop windowing), every inset is zero, and
 			// skipping the dispatch would leave the keyboard-height padding on the view for good.
@@ -292,9 +326,7 @@ namespace Microsoft.Maui.Platform
 			{
 				if (IsImeAnimating && v is not null)
 				{
-					// Track the gated view so OnProgress can drive its safe-area padding directly
-					// from the live IME inset on every animation frame instead of leaving it frozen.
-					_imeAnimationViews.Add(v);
+					PrepareImeAnimationView(v, insets);
 					_reapplyInsetsWhenAnimationEnds = true;
 					_lastGatedView = v;
 				}
@@ -433,13 +465,22 @@ namespace Microsoft.Maui.Platform
 		}
 		public void ResetView(AView view)
 		{
-			if (view is IHandleWindowInsets customHandler)
+			if (view.IsAlive() && FindImeAnimationOwner(view) is { } owner && !ReferenceEquals(owner, this))
+			{
+				owner.ResetView(view);
+			}
+
+			if (_imeAnimationViews.Remove(view, out var animationView))
+			{
+				animationView.Dispose();
+			}
+
+			if (view.IsAlive() && view is IHandleWindowInsets customHandler)
 			{
 				customHandler.ResetWindowInsets(view);
 			}
 
 			_trackedViews.Remove(view);
-			_imeAnimationViews.Remove(view);
 			_viewsAttachedDuringImeAnimation.Remove(view);
 
 			if (ReferenceEquals(_lastGatedView, view))
@@ -482,7 +523,7 @@ namespace Microsoft.Maui.Platform
 		/// </summary>
 		static bool IsDescendantOf(AView? child, AView parent)
 		{
-			if (child is null)
+			if (!child.IsAlive())
 			{
 				return false;
 			}
@@ -506,6 +547,7 @@ namespace Microsoft.Maui.Platform
 			{
 				ResetAllViews();
 				_viewsAttachedDuringImeAnimation.Clear();
+				_runningImeAnimations.Clear();
 			}
 			base.Dispose(disposing);
 		}
@@ -558,28 +600,16 @@ namespace Microsoft.Maui.Platform
 			}
 
 			var imeInsetBottom = insets.GetInsets(WindowInsetsCompat.Type.Ime())?.Bottom ?? 0;
-			var isImeOpening = _lastImeInsetBottom >= 0 && imeInsetBottom > _lastImeInsetBottom;
-			_lastImeInsetBottom = imeInsetBottom;
 
-			foreach (var view in _imeAnimationViews)
+			var containerInsetBottom = insets.GetInsets(
+				WindowInsetsCompat.Type.SystemBars() | WindowInsetsCompat.Type.DisplayCutout())?.Bottom ?? 0;
+
+			foreach (var entry in _imeAnimationViews)
 			{
-				if (view is ICrossPlatformLayoutBacking { CrossPlatformLayout: { } crossPlatformLayout } && view.Context is Context context)
+				var view = entry.Key;
+				if (view.IsAlive())
 				{
-					InitializeImeAnimationState(context);
-					if (_shouldApplyAnimatedImeInsets &&
-						SafeAreaExtensions.ApplyAnimatedSoftInputInsetsPx(
-							insets,
-							crossPlatformLayout,
-							context,
-							view,
-							isImeOpening))
-					{
-						TrackView(view);
-						if (isImeOpening)
-						{
-							RequestFocusedViewVisibleAfterLayout(view);
-						}
-					}
+					entry.Value.ApplyProgress(imeInsetBottom, containerInsetBottom);
 				}
 			}
 
@@ -601,6 +631,21 @@ namespace Microsoft.Maui.Platform
 			}
 
 			_viewsAttachedDuringImeAnimation.Clear();
+
+			foreach (var entry in _imeAnimationViews)
+			{
+				using var animationView = entry.Value;
+				var view = entry.Key;
+				if (view.IsAlive())
+				{
+					animationView.Complete();
+					if (animationView.IsOpening)
+					{
+						RequestFocusedViewVisibleAfterLayout(view);
+					}
+				}
+			}
+			_imeAnimationViews.Clear();
 
 			// Keep the gate up for one more main-looper turn: the system's deferred
 			// post-animation inset dispatches can still carry animation-time IME insets.
@@ -662,7 +707,6 @@ namespace Microsoft.Maui.Platform
 			_pendingFocusedViewRequests.Clear();
 			_imeAnimationStateInitialized = false;
 			_shouldApplyAnimatedImeInsets = false;
-			_lastImeInsetBottom = -1;
 
 			if (!_reapplyInsetsWhenAnimationEnds)
 			{
@@ -693,8 +737,8 @@ namespace Microsoft.Maui.Platform
 
 			insetView.Post(() =>
 			{
-				_pendingFocusedViewRequests.Remove(insetView);
-				if (!insetView.IsAttachedToWindow)
+				if (!_pendingFocusedViewRequests.Remove(insetView) ||
+					!insetView.IsAlive() || !insetView.IsAttachedToWindow)
 				{
 					return;
 				}
@@ -767,13 +811,17 @@ namespace Microsoft.Maui.Platform
 				_pendingFocusedViewRequests.Clear();
 				_imeAnimationStateInitialized = false;
 				_shouldApplyAnimatedImeInsets = false;
-				_lastImeInsetBottom = -1;
 
 				// Exemptions only apply to the animation during which the view attached
 				_viewsAttachedDuringImeAnimation.Clear();
 			}
 
-			_runningImeAnimations.Add(animation);
+			// OnPrepare and OnStart can both report the same animation, including through
+			// multiple views sharing this listener. Capture its target insets only once.
+			if (_runningImeAnimations.Add(animation))
+			{
+				_imeAnimationVersion++;
+			}
 		}
 
 		void InitializeImeAnimationState(Context context)
@@ -788,6 +836,118 @@ namespace Microsoft.Maui.Platform
 			if (context.GetActivity()?.Window?.Attributes is WindowManagerLayoutParams attributes)
 			{
 				_shouldApplyAnimatedImeInsets = ShouldApplyAnimatedImeInsets(attributes.SoftInputMode);
+			}
+		}
+
+		void PrepareImeAnimationView(AView view, WindowInsetsCompat? insets)
+		{
+			if (insets is null || _runningImeAnimations.Count == 0 || !view.IsAlive() ||
+				view is not ViewGroup group ||
+				view is not ICrossPlatformLayoutBacking { CrossPlatformLayout: { } layout } ||
+				view.Context is not Context context)
+			{
+				return;
+			}
+
+			InitializeImeAnimationState(context);
+			var bottomRegion = SafeAreaExtensions.GetSafeAreaRegionForEdge(3, layout);
+			if (!_shouldApplyAnimatedImeInsets || !SafeAreaEdges.IsSoftInput(bottomRegion))
+			{
+				return;
+			}
+
+			if (!_imeAnimationViews.TryGetValue(view, out var animationView))
+			{
+				// An ancestor already resizes this subtree for the IME.
+				// Padding its descendants as well would apply the overlap twice.
+				var parent = view.Parent;
+				while (parent is AView parentView)
+				{
+					if (_imeAnimationViews.ContainsKey(parentView))
+					{
+						return;
+					}
+					parent = parentView.Parent;
+				}
+
+				animationView = new ImeAnimationView(group, bottomRegion, layout, context);
+				_imeAnimationViews.Add(view, animationView);
+				TrackView(view);
+			}
+
+			animationView.Prepare(insets, _imeAnimationVersion);
+		}
+
+		sealed class ImeAnimationView(
+			ViewGroup view, SafeAreaRegions bottomRegion, ICrossPlatformLayout layout, Context context) : IDisposable
+		{
+			readonly int[] _location = new int[2];
+			int _version = -1;
+			int _imeBottom;
+			WindowInsetsCompat.Builder? _insets;
+
+			public bool IsOpening { get; private set; }
+
+			public void Prepare(WindowInsetsCompat insets, int version)
+			{
+				if (_version == version)
+				{
+					return;
+				}
+
+				_version = version;
+				_insets?.Dispose();
+				_insets = new WindowInsetsCompat.Builder(insets);
+
+				var keyboard = insets.GetKeyboardInsetsPx(context);
+				_imeBottom = (int)keyboard.Bottom;
+				var bottomInset = SafeAreaExtensions.GetSafeAreaForEdge(
+					bottomRegion, insets.ToSafeAreaInsetsPx(context).Bottom, 3, !keyboard.IsEmpty, keyboard);
+				var bottomOffset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(layout, context, view, _location);
+				var startPadding = view.PaddingBottom;
+				var endPadding = (int)SafeAreaExtensions.GetBottomSafeAreaOverlapPx(bottomInset, bottomOffset);
+				IsOpening = endPadding > startPadding;
+			}
+
+			public void ApplyProgress(int imeBottom, int containerBottom)
+			{
+				_imeBottom = imeBottom;
+				var bottomOffset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(layout, context, view, _location);
+				var inset = SafeAreaEdges.IsOnlySoftInput(bottomRegion) || IsOpening
+					? imeBottom
+					: Math.Max(containerBottom, imeBottom);
+				var bottom = (int)SafeAreaExtensions.GetBottomSafeAreaOverlapPx(inset, bottomOffset);
+				// Resize the viewport instead of translating its content: top-anchored
+				// children must stay fixed while bottom-anchored children follow the IME.
+				if (view.PaddingBottom != bottom)
+				{
+					view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, bottom);
+				}
+			}
+
+			public void Complete()
+			{
+				// Preserve locally consumed insets, but use the current IME height.
+				var ime = ViewCompat.GetRootWindowInsets(view)?.GetInsets(WindowInsetsCompat.Type.Ime()) ??
+					Insets.Of(0, 0, 0, _imeBottom);
+				using var settledInsets = _insets?.SetInsets(WindowInsetsCompat.Type.Ime(), ime)?.Build();
+				if (settledInsets is not null)
+				{
+					if (view is IHandleWindowInsets handler)
+					{
+						handler.HandleWindowInsets(view, settledInsets);
+					}
+					else
+					{
+						SafeAreaExtensions.ApplyAdjustedSafeAreaInsetsPx(settledInsets, layout, context, view);
+					}
+				}
+			}
+
+			public void Dispose()
+			{
+				_insets?.Dispose();
+				_insets = null;
 			}
 		}
 
