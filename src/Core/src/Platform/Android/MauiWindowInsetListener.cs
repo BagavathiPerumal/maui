@@ -609,7 +609,10 @@ namespace Microsoft.Maui.Platform
 				var view = entry.Key;
 				if (view.IsAlive())
 				{
-					entry.Value.ApplyProgress(imeInsetBottom, containerInsetBottom);
+					if (entry.Value.ApplyProgress(imeInsetBottom, containerInsetBottom))
+					{
+						RequestFocusedViewVisibleAfterLayout(view);
+					}
 				}
 			}
 
@@ -858,12 +861,13 @@ namespace Microsoft.Maui.Platform
 
 			if (!_imeAnimationViews.TryGetValue(view, out var animationView))
 			{
-				// An ancestor already resizes this subtree for the IME.
-				// Padding its descendants as well would apply the overlap twice.
+				// Contained descendants already benefit from the ancestor's resizing.
+				// Overflowing descendants still need their own overlap adjustment.
 				var parent = view.Parent;
 				while (parent is AView parentView)
 				{
-					if (_imeAnimationViews.ContainsKey(parentView))
+					if (_imeAnimationViews.TryGetValue(parentView, out var ancestor) &&
+						ancestor.ContainsBottom(view, layout))
 					{
 						return;
 					}
@@ -888,6 +892,19 @@ namespace Microsoft.Maui.Platform
 
 			public bool IsOpening { get; private set; }
 
+			public bool ContainsBottom(AView descendant, ICrossPlatformLayout descendantLayout)
+			{
+				if (!view.IsAlive() || view.Height <= 0 || descendant.Height <= 0)
+				{
+					return false;
+				}
+
+				var ancestorOffset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(layout, context, view, _location);
+				var descendantOffset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(
+					descendantLayout, context, descendant, _location);
+				return descendantOffset >= ancestorOffset;
+			}
+
 			public void Prepare(WindowInsetsCompat insets, int version)
 			{
 				if (_version == version)
@@ -909,7 +926,7 @@ namespace Microsoft.Maui.Platform
 				IsOpening = endPadding > startPadding;
 			}
 
-			public void ApplyProgress(int imeBottom, int containerBottom)
+			public bool ApplyProgress(int imeBottom, int containerBottom)
 			{
 				_imeBottom = imeBottom;
 				var bottomOffset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(layout, context, view, _location);
@@ -921,8 +938,11 @@ namespace Microsoft.Maui.Platform
 				// children must stay fixed while bottom-anchored children follow the IME.
 				if (view.PaddingBottom != bottom)
 				{
+					var isIncreasing = bottom > view.PaddingBottom;
 					view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, bottom);
+					return isIncreasing;
 				}
+				return false;
 			}
 
 			public void Complete()
