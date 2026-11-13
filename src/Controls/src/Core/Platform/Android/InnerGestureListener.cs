@@ -67,7 +67,7 @@ namespace Microsoft.Maui.Controls.Platform
 
 		bool HasAnyGestures()
 		{
-			// Include long presses so OnDown consumes the touch and receives Up/Cancel to cancel pending long presses.
+			// Include long presses so the detector receives the full touch sequence and can cancel on Up/Cancel.
 			return (_panGestureHandler?.HasAnyGestures() ?? false) || (_tapGestureHandler?.HasAnyGestures() ?? false) || (_swipeGestureHandler?.HasAnyGestures() ?? false) || (_dragAndDropGestureHandler?.HasAnyDragGestures() ?? false) || (_longPressGestureHandler?.HasAnyGestures() ?? false);
 		}
 
