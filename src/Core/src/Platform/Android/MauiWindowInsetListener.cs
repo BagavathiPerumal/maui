@@ -5,7 +5,6 @@ using Android.Content;
 using Android.Views;
 using AndroidX.Core.Graphics;
 using AndroidX.Core.View;
-using AndroidX.Core.Widget;
 using AndroidX.RecyclerView.Widget;
 using Google.Android.Material.AppBar;
 using AView = Android.Views.View;
@@ -823,6 +822,10 @@ namespace Microsoft.Maui.Platform
 			// multiple views sharing this listener. Capture its target insets only once.
 			if (_runningImeAnimations.Add(animation))
 			{
+				foreach (var state in _imeAnimationViews.Values)
+				{
+					state.DisableBoundsAnimation();
+				}
 				_imeAnimationVersion++;
 			}
 		}
@@ -861,20 +864,16 @@ namespace Microsoft.Maui.Platform
 
 			if (!_imeAnimationViews.TryGetValue(view, out var animationView))
 			{
-				// Contained descendants already benefit from the ancestor's resizing.
-				// Overflowing descendants still need their own overlap adjustment.
-				var parent = view.Parent;
-				while (parent is AView parentView)
+				var allowBoundsAnimation = _runningImeAnimations.Count == 1;
+				foreach (var ancestor in _imeAnimationViews.Keys)
 				{
-					if (_imeAnimationViews.TryGetValue(parentView, out var ancestor) &&
-						ancestor.ContainsBottom(view, layout))
+					if (IsDescendantOf(view, ancestor))
 					{
-						return;
+						allowBoundsAnimation = false;
+						break;
 					}
-					parent = parentView.Parent;
 				}
-
-				animationView = new ImeAnimationView(group, bottomRegion, layout, context);
+				animationView = new ImeAnimationView(group, bottomRegion, layout, context, allowBoundsAnimation);
 				_imeAnimationViews.Add(view, animationView);
 				TrackView(view);
 			}
@@ -883,27 +882,18 @@ namespace Microsoft.Maui.Platform
 		}
 
 		sealed class ImeAnimationView(
-			ViewGroup view, SafeAreaRegions bottomRegion, ICrossPlatformLayout layout, Context context) : IDisposable
+			ViewGroup view, SafeAreaRegions bottomRegion, ICrossPlatformLayout layout, Context context,
+			bool allowBoundsAnimation) : IDisposable
 		{
 			readonly int[] _location = new int[2];
 			int _version = -1;
 			int _imeBottom;
+			int _containerBottom;
+			int _lastBottom = view.PaddingBottom;
 			WindowInsetsCompat.Builder? _insets;
+			ImeBoundsAnimation? _boundsAnimation;
 
 			public bool IsOpening { get; private set; }
-
-			public bool ContainsBottom(AView descendant, ICrossPlatformLayout descendantLayout)
-			{
-				if (!view.IsAlive() || view.Height <= 0 || descendant.Height <= 0)
-				{
-					return false;
-				}
-
-				var ancestorOffset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(layout, context, view, _location);
-				var descendantOffset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(
-					descendantLayout, context, descendant, _location);
-				return descendantOffset >= ancestorOffset;
-			}
 
 			public void Prepare(WindowInsetsCompat insets, int version)
 			{
@@ -912,41 +902,71 @@ namespace Microsoft.Maui.Platform
 					return;
 				}
 
+				if (_version < 0)
+				{
+					var offset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(layout, context, view, _location);
+					_imeBottom = view.PaddingBottom > 0 ? (int)(view.PaddingBottom + offset) : 0;
+				}
 				_version = version;
 				_insets?.Dispose();
 				_insets = new WindowInsetsCompat.Builder(insets);
 
 				var keyboard = insets.GetKeyboardInsetsPx(context);
-				_imeBottom = (int)keyboard.Bottom;
 				var bottomInset = SafeAreaExtensions.GetSafeAreaForEdge(
 					bottomRegion, insets.ToSafeAreaInsetsPx(context).Bottom, 3, !keyboard.IsEmpty, keyboard);
 				var bottomOffset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(layout, context, view, _location);
-				var startPadding = view.PaddingBottom;
 				var endPadding = (int)SafeAreaExtensions.GetBottomSafeAreaOverlapPx(bottomInset, bottomOffset);
-				IsOpening = endPadding > startPadding;
+				IsOpening = endPadding > view.PaddingBottom;
+				if (allowBoundsAnimation && _boundsAnimation is null && endPadding != view.PaddingBottom)
+				{
+					_boundsAnimation = ImeBoundsAnimation.TryCreate(this, view, endPadding);
+				}
 			}
 
 			public bool ApplyProgress(int imeBottom, int containerBottom)
 			{
 				_imeBottom = imeBottom;
-				var bottomOffset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(layout, context, view, _location);
+				_containerBottom = containerBottom;
 				var inset = SafeAreaEdges.IsOnlySoftInput(bottomRegion) || IsOpening
 					? imeBottom
 					: Math.Max(containerBottom, imeBottom);
-				var bottom = (int)SafeAreaExtensions.GetBottomSafeAreaOverlapPx(inset, bottomOffset);
-				// Resize the viewport instead of translating its content: top-anchored
-				// children must stay fixed while bottom-anchored children follow the IME.
-				if (view.PaddingBottom != bottom)
+				var offset = SafeAreaExtensions.GetBottomSafeAreaOffsetPx(layout, context, view, _location);
+				var bottom = (int)SafeAreaExtensions.GetBottomSafeAreaOverlapPx(inset, offset);
+				var increasing = bottom > _lastBottom;
+				_lastBottom = bottom;
+				if (_boundsAnimation is not null)
 				{
-					var isIncreasing = bottom > view.PaddingBottom;
-					view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, bottom);
-					return isIncreasing;
+					if (_boundsAnimation.Apply(bottom))
+					{
+						return increasing;
+					}
+					DisableBoundsAnimation();
 				}
-				return false;
+				if (bottom != view.PaddingBottom)
+				{
+					view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, bottom);
+				}
+				return increasing;
+			}
+
+			public void DisableBoundsAnimation()
+			{
+				allowBoundsAnimation = false;
+				var animation = _boundsAnimation;
+				_boundsAnimation = null;
+				if (animation is not null)
+				{
+					animation.Dispose();
+					if (view.IsAlive())
+					{
+						ApplyProgress(_imeBottom, _containerBottom);
+					}
+				}
 			}
 
 			public void Complete()
 			{
+				DisableBoundsAnimation();
 				// Preserve locally consumed insets, but use the current IME height.
 				var ime = ViewCompat.GetRootWindowInsets(view)?.GetInsets(WindowInsetsCompat.Type.Ime()) ??
 					Insets.Of(0, 0, 0, _imeBottom);
@@ -966,8 +986,262 @@ namespace Microsoft.Maui.Platform
 
 			public void Dispose()
 			{
+				_boundsAnimation?.Dispose();
+				_boundsAnimation = null;
 				_insets?.Dispose();
 				_insets = null;
+			}
+		}
+
+		sealed class ImeBoundsAnimation : Java.Lang.Object, ViewTreeObserver.IOnPreDrawListener
+		{
+			readonly ImeAnimationView _owner;
+			readonly ViewGroup _view;
+			readonly int _startPadding;
+			readonly int _endPadding;
+			readonly List<ImeNativeBounds> _elements = [];
+			readonly global::Android.Graphics.Rect _clip = new();
+			ViewTreeObserver? _observer;
+			int _phase;
+			int _preparationPasses;
+			int _bottom;
+			bool _disposed;
+
+			ImeBoundsAnimation(ImeAnimationView owner, ViewGroup view, int endPadding)
+			{
+				_owner = owner;
+				_view = view;
+				_startPadding = view.PaddingBottom;
+				_bottom = _startPadding;
+				_endPadding = endPadding;
+			}
+
+			public static ImeBoundsAnimation? TryCreate(ImeAnimationView owner, ViewGroup view, int endPadding)
+			{
+				if (!view.IsAttachedToWindow)
+				{
+					return null;
+				}
+				var animation = new ImeBoundsAnimation(owner, view, endPadding);
+				if (!animation.Capture(view))
+				{
+					animation.Dispose();
+					return null;
+				}
+				animation._observer = view.ViewTreeObserver;
+				if (animation._observer?.IsAlive != true)
+				{
+					animation.Dispose();
+					return null;
+				}
+				animation._observer.AddOnPreDrawListener(animation);
+				return animation;
+			}
+
+			bool Capture(AView current)
+			{
+				// Keep scrolling, nested keyboard-safe layouts, and native container
+				// internals on the existing overlap-resizing path.
+				if (!current.IsAlive() || current.IsLayoutRequested ||
+					(current is ViewGroup && current is not ContentViewGroup && current is not LayoutViewGroup) ||
+					(current != _view && current is ICrossPlatformLayoutBacking { CrossPlatformLayout: { } childLayout } &&
+						SafeAreaEdges.IsSoftInput(SafeAreaExtensions.GetSafeAreaRegionForEdge(3, childLayout))))
+				{
+					return false;
+				}
+				using var clip = current.ClipBounds;
+				if (clip is not null)
+				{
+					return false;
+				}
+				_elements.Add(new ImeNativeBounds(current));
+				if (current is ViewGroup group)
+				{
+					for (int i = 0; i < group.ChildCount; i++)
+					{
+						if (group.GetChildAt(i) is { } child && !Capture(child))
+						{
+							return false;
+						}
+					}
+				}
+				return true;
+			}
+
+			public bool OnPreDraw()
+			{
+				if (_disposed)
+				{
+					return true;
+				}
+				if (!_view.IsAlive())
+				{
+					_owner.DisableBoundsAnimation();
+					return true;
+				}
+				if (_phase < 3 && ++_preparationPasses > 4)
+				{
+					// A pending native layout must not indefinitely block drawing.
+					_owner.DisableBoundsAnimation();
+					return false;
+				}
+				if (_phase == 0)
+				{
+					_view.SetPadding(_view.PaddingLeft, _view.PaddingTop, _view.PaddingRight, _endPadding);
+					_phase = 1;
+					return false;
+				}
+				if (_phase < 3)
+				{
+					if (!_elements[0].HasStartBounds)
+					{
+						_owner.DisableBoundsAnimation();
+						return false;
+					}
+					for (int i = 0; i < _elements.Count; i++)
+					{
+						if (!_elements[i].IsAttachedToOriginalParent)
+						{
+							_owner.DisableBoundsAnimation();
+							return false;
+						}
+						if (_elements[i].View.IsLayoutRequested)
+						{
+							return false;
+						}
+					}
+					if (_phase == 1)
+					{
+						for (int i = 0; i < _elements.Count; i++)
+						{
+							_elements[i].CaptureEnd();
+						}
+						_view.SetPadding(_view.PaddingLeft, _view.PaddingTop, _view.PaddingRight, _startPadding);
+						_phase = 2;
+						return false;
+					}
+					for (int i = 0; i < _elements.Count; i++)
+					{
+						_elements[i].Begin();
+					}
+					_phase = 3;
+				}
+				if (!Apply(_bottom))
+				{
+					_owner.DisableBoundsAnimation();
+					return false;
+				}
+				return true;
+			}
+
+			public bool Apply(int bottom)
+			{
+				_bottom = bottom;
+				if (_phase != 3)
+				{
+					return true;
+				}
+				for (int i = 0; i < _elements.Count; i++)
+				{
+					if (!_elements[i].MatchesLastBounds)
+					{
+						return false;
+					}
+				}
+				var progress = (float)(bottom - _startPadding) / (_endPadding - _startPadding);
+				for (int i = 0; i < _elements.Count; i++)
+				{
+					_elements[i].Apply(progress);
+				}
+				_clip.Set(0, _view.PaddingTop, _view.Width, Math.Max(_view.PaddingTop, _view.Height - bottom));
+				_view.ClipBounds = _clip;
+				return true;
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing && !_disposed)
+				{
+					_disposed = true;
+					if (_observer?.Handle != IntPtr.Zero && _observer?.IsAlive == true)
+					{
+						_observer.RemoveOnPreDrawListener(this);
+					}
+					if (_view.IsAlive() && _phase > 0)
+					{
+						if (_phase == 1)
+						{
+							_view.SetPadding(_view.PaddingLeft, _view.PaddingTop, _view.PaddingRight, _startPadding);
+						}
+						if (_phase == 3)
+						{
+							_view.ClipBounds = null;
+						}
+						_view.RequestLayout();
+					}
+					if (_phase == 3)
+					{
+						for (int i = 0; i < _elements.Count; i++)
+						{
+							_elements[i].RestoreClipping();
+						}
+					}
+					_clip.Dispose();
+				}
+				base.Dispose(disposing);
+			}
+		}
+
+		sealed class ImeNativeBounds(AView view)
+		{
+			readonly IViewParent? _parent = view.Parent;
+			readonly int _childCount = (view as ViewGroup)?.ChildCount ?? 0;
+			readonly Graphics.Rect _start = new(view.Left, view.Top, view.Width, view.Height);
+			Graphics.Rect _end;
+			Graphics.Rect _last;
+			bool _clipToPadding;
+
+			public AView View => view;
+			public bool HasStartBounds => view.Left == _start.Left && view.Top == _start.Top &&
+				view.Right == _start.Right && view.Bottom == _start.Bottom;
+			public bool IsAttachedToOriginalParent => view.IsAlive() && view.Parent == _parent &&
+				(view is not ViewGroup group || group.ChildCount == _childCount);
+			public bool MatchesLastBounds => IsAttachedToOriginalParent &&
+				view.Left == _last.Left && view.Top == _last.Top &&
+				view.Right == _last.Right && view.Bottom == _last.Bottom && !view.IsLayoutRequested;
+
+			public void CaptureEnd() => _end = new(view.Left, view.Top, view.Width, view.Height);
+
+			public void Begin()
+			{
+				_last = new(view.Left, view.Top, view.Width, view.Height);
+				if (view is ViewGroup group)
+				{
+					_clipToPadding = group.ClipToPadding;
+					group.SetClipToPadding(false);
+				}
+			}
+
+			public void Apply(float progress)
+			{
+				var left = (int)Math.Round(_start.Left + (_end.Left - _start.Left) * progress);
+				var top = (int)Math.Round(_start.Top + (_end.Top - _start.Top) * progress);
+				var right = Math.Max(left, (int)Math.Round(_start.Right + (_end.Right - _start.Right) * progress));
+				var bottom = Math.Max(top, (int)Math.Round(_start.Bottom + (_end.Bottom - _start.Bottom) * progress));
+				// Native edge setters update drawing bounds without invoking MAUI arrange.
+				view.Left = left;
+				view.Top = top;
+				view.Right = right;
+				view.Bottom = bottom;
+				_last = new(left, top, right - left, bottom - top);
+			}
+
+			public void RestoreClipping()
+			{
+				if (view.IsAlive() && view is ViewGroup group)
+				{
+					group.SetClipToPadding(_clipToPadding);
+				}
 			}
 		}
 

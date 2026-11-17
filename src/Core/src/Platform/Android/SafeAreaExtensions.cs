@@ -84,6 +84,9 @@ internal static class SafeAreaExtensions
 		var baseSafeArea = windowInsets.ToSafeAreaInsetsPx(context);
 		var keyboardInsets = windowInsets.GetKeyboardInsetsPx(context);
 		var isKeyboardShowing = !keyboardInsets.IsEmpty;
+		var usesWindowRelativeIme =
+			context.GetActivity()?.Window?.Attributes is WindowManagerLayoutParams attributes &&
+			MauiWindowInsetListener.ShouldApplyAnimatedImeInsets(attributes.SoftInputMode);
 
 		var layout = crossPlatformLayout;
 		var safeAreaView2 = GetSafeAreaView2(layout);
@@ -217,8 +220,7 @@ internal static class SafeAreaExtensions
 
 					double bottomOffset = screenHeight - viewBottom;
 					if (SafeAreaEdges.IsSoftInput(GetSafeAreaRegionForEdge(3, layout)) &&
-						context.GetActivity()?.Window?.Attributes is WindowManagerLayoutParams attributes &&
-						MauiWindowInsetListener.ShouldApplyAnimatedImeInsets(attributes.SoftInputMode))
+						usesWindowRelativeIme)
 					{
 						bottomOffset = GetBottomSafeAreaOffsetPx(layout, context, view, viewLocation);
 					}
@@ -316,7 +318,9 @@ internal static class SafeAreaExtensions
 				// For keyboard (IME), only consume if we're handling it
 				if (ime is not null && isKeyboardShowing)
 				{
-					var newImeBottom = (bottom > 0 && bottom >= keyboardInsets.Bottom) ? 0 : ime.Bottom;
+					// Viewport resizing does not move fixed AbsoluteLayout children.
+					// Let each descendant evaluate its actual remaining overlap.
+					var newImeBottom = !usesWindowRelativeIme && bottom > 0 && bottom >= keyboardInsets.Bottom ? 0 : ime.Bottom;
 					builder.SetInsets(WindowInsetsCompat.Type.Ime(),
 						AndroidX.Core.Graphics.Insets.Of(0, 0, 0, newImeBottom));
 				}
