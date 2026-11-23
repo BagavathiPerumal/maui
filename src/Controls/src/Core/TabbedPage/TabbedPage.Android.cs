@@ -16,6 +16,12 @@ namespace Microsoft.Maui.Controls
 		IMauiContext MauiContext => this.Handler?.MauiContext ?? throw new InvalidOperationException("MauiContext cannot be null here");
 		TabbedPageManager? _tabbedPageManager;
 
+		protected override void OnCurrentPageChanged()
+		{
+			base.OnCurrentPageChanged();
+			(this.Window as Window)?.NotifyNavigationStateChanged();
+		}
+
 		public TabbedPageManager TabbedPageManager
 		{
 			get => _tabbedPageManager ??= new (MauiContext);
