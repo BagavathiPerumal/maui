@@ -25,6 +25,9 @@ namespace Microsoft.Maui.Platform
 		IBorderStroke? _clip;
 		readonly Context _context;
 		bool _didSafeAreaEdgeConfigurationChange = true;
+		bool _hasReceivedWindowInsets;
+		bool _hasRetriedInitialEmptyInsets;
+		bool _isInitialInsetLayoutPending;
 		bool _isInsetListenerSet;
 
 		public ContentViewGroup(Context context) : base(context)
@@ -72,6 +75,9 @@ namespace Microsoft.Maui.Platform
 			if (_isInsetListenerSet)
 				MauiWindowInsetListenerExtensions.RemoveMauiWindowInsetListener(this, _context);
 			_didSafeAreaEdgeConfigurationChange = true;
+			_hasReceivedWindowInsets = false;
+			_hasRetriedInitialEmptyInsets = false;
+			_isInitialInsetLayoutPending = false;
 			_isInsetListenerSet = false;
 		}
 
@@ -136,6 +142,16 @@ namespace Microsoft.Maui.Platform
 				return;
 			}
 
+			bool isInitialInsetLayout = _isInitialInsetLayoutPending;
+			_isInitialInsetLayoutPending = false;
+			bool needsSafeAreaInsets = SafeAreaExtensions.ShouldReapplyInsetsForResize(CrossPlatformLayout, this);
+
+			if (_isInsetListenerSet && !_hasReceivedWindowInsets && needsSafeAreaInsets)
+			{
+				ViewCompat.RequestApplyInsets(this);
+				return;
+			}
+
 			var destination = _context.ToCrossPlatformRectInReferenceFrame(left, top, right, bottom);
 
 			// Account for padding in layout bounds
@@ -154,6 +170,7 @@ namespace Microsoft.Maui.Platform
 
 			// Overlap-based padding otherwise stays stale after a safe-area view resizes. See #36269.
 			if (_isInsetListenerSet &&
+				!isInitialInsetLayout &&
 				(_didSafeAreaEdgeConfigurationChange ||
 					(changed && SafeAreaExtensions.ShouldReapplyInsetsForResize(CrossPlatformLayout, this))))
 			{
@@ -237,6 +254,38 @@ namespace Microsoft.Maui.Platform
 			if (CrossPlatformLayout is null || insets is null)
 			{
 				return insets;
+			}
+
+			bool needsSafeAreaInsets = SafeAreaExtensions.ShouldReapplyInsetsForResize(CrossPlatformLayout, this);
+
+			if (!_hasReceivedWindowInsets)
+			{
+				using var rootInsets = ViewCompat.GetRootWindowInsets(this);
+				if (!insets.HasInsets &&
+					(rootInsets is null || rootInsets.HasInsets) &&
+					!_hasRetriedInitialEmptyInsets)
+				{
+					_hasRetriedInitialEmptyInsets = true;
+					ViewCompat.RequestApplyInsets(this);
+					return insets;
+				}
+
+				bool hasUsableBounds =
+					(view.Width > 0 && view.Height > 0) ||
+					(view.MeasuredWidth > 0 && view.MeasuredHeight > 0);
+				if (needsSafeAreaInsets && !hasUsableBounds)
+				{
+					return insets;
+				}
+
+				_hasReceivedWindowInsets = true;
+				_isInitialInsetLayoutPending = true;
+				_didSafeAreaEdgeConfigurationChange = false;
+
+				if (needsSafeAreaInsets)
+				{
+					RequestLayout();
+				}
 			}
 
 			if (!_hasStoredOriginalPadding)

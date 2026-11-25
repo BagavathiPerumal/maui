@@ -283,11 +283,11 @@ namespace Microsoft.Maui.Platform
 
 		public virtual WindowInsetsCompat? OnApplyWindowInsets(AView? v, WindowInsetsCompat? insets)
 		{
-			// Empty insets still reach a tracked view: once the keyboard closes on a window with
-			// no system bars (immersive, tablet in desktop windowing), every inset is zero, and
-			// skipping the dispatch would leave the keyboard-height padding on the view for good.
+			// Safe-area-aware views need an initial dispatch when the root has insets, even if an
+			// ancestor temporarily reduced the values to zero. Tracked views also need empty insets
+			// to clear keyboard padding on windows with no system bars.
 			if (insets is null || v is null ||
-				(!insets.HasInsets && !IsViewTracked(v)) ||
+				(!insets.HasInsets && !IsViewTracked(v) && !NeedsSafeAreaInsets(v)) ||
 				(IsImeAnimating && !_viewsAttachedDuringImeAnimation.Contains(v)))
 			{
 				if (IsImeAnimating && v is not null)
@@ -322,6 +322,10 @@ namespace Microsoft.Maui.Platform
 			// Apply default window insets for standard views
 			return ApplyDefaultWindowInsets(v, insets);
 		}
+
+		static bool NeedsSafeAreaInsets(AView view) =>
+			view is ICrossPlatformLayoutBacking { CrossPlatformLayout: { } layout } &&
+			SafeAreaExtensions.ShouldReapplyInsetsForResize(layout, view);
 
 		static WindowInsetsCompat? ApplyDefaultWindowInsets(AView v, WindowInsetsCompat insets)
 		{
