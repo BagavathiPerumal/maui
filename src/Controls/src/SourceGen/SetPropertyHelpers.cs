@@ -550,7 +550,6 @@ static class SetPropertyHelpers
 			if (HasDoubleImplicitConversion(localVar.Type, bpTypeAndConverter?.type, context, out _))
 				return true;
 
-			// A compatible single property-element child should be added, not cast to the collection property type.
 			if (HasExplicitConversion(localVar, bpTypeAndConverter?.type, context))
 			{
 				return true;
