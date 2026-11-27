@@ -104,11 +104,6 @@ namespace Microsoft.Maui.Controls.Xaml
 							else
 								prop = ReadNode(reader, rootNode);
 
-							if (prop is ElementNode propertyElementValue)
-							{
-								propertyElementValue.IsPropertyElementValue = true;
-							}
-
 							if (prop != null)
 								node.Properties.Add(name, prop);
 						}

@@ -117,7 +117,6 @@ class ElementNode(XmlType type, string namespaceURI, IXmlNamespaceResolver names
 	public XmlType XmlType { get; } = type;
 	public string NamespaceURI { get; } = namespaceURI;
 	public NameScopeRef NameScopeRef { get; set; }
-	public bool IsPropertyElementValue { get; set; }
 #if __SOURCEGEN__
 	// The parser's XmlReader advances after this element; preserve its local default namespace.
 	public string DefaultXmlNamespace { get; set; } = namespaceResolver?.LookupNamespace(string.Empty);
@@ -170,8 +169,7 @@ class ElementNode(XmlType type, string namespaceURI, IXmlNamespaceResolver names
 		var clone = new ElementNode(XmlType, NamespaceURI, NamespaceResolver, LineNumber, LinePosition)
 		{
 			IgnorablePrefixes = IgnorablePrefixes,
-			IsOnPlatformDefaultValue = IsOnPlatformDefaultValue,
-			IsPropertyElementValue = IsPropertyElementValue
+			IsOnPlatformDefaultValue = IsOnPlatformDefaultValue
 		};
 #if __SOURCEGEN__
 		clone.DefaultXmlNamespace = DefaultXmlNamespace;

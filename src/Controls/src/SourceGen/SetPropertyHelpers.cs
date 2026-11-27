@@ -14,7 +14,7 @@ using static LocationHelpers;
 
 static class SetPropertyHelpers
 {
-	public static void SetPropertyValue(IndentedTextWriter writer, ILocalValue parentVar, XmlName propertyName, INode valueNode, SourceGenContext context, NodeSGExtensions.GetNodeValueDelegate? getNodeValue = null, bool treeOrder = false, IndentedTextWriter? icWriter = null, ILocalValue? inflatorVar = null, bool asCollectionItem = false, bool singleChildPropertyElement = false)
+	public static void SetPropertyValue(IndentedTextWriter writer, ILocalValue parentVar, XmlName propertyName, INode valueNode, SourceGenContext context, NodeSGExtensions.GetNodeValueDelegate? getNodeValue = null, bool treeOrder = false, IndentedTextWriter? icWriter = null, ILocalValue? inflatorVar = null, bool asCollectionItem = false)
 	{
 		getNodeValue ??= (node, toType) => context.Variables[node];
 
@@ -60,11 +60,8 @@ static class SetPropertyHelpers
 			return;
 		}
 
-		// Prefer adding a single property-element child only when it is assignable to the collection's item type.
-		var preferAddToCollection = singleChildPropertyElement && CanAddAsCollectionItem(parentVar, localName, bpFieldSymbol, attached, valueNode, context, getNodeValue);
-
 		//If it's a BP, SetValue
-		if (!asCollectionItem && CanSetValue(bpFieldSymbol, valueNode, parentVar.Type, localName, context, getNodeValue, preferAddToCollection, out var explicitPropertyNameForValue))
+		if (!asCollectionItem && CanSetValue(bpFieldSymbol, valueNode, parentVar.Type, localName, context, getNodeValue, out var explicitPropertyNameForValue))
 		{
 			SetValue(writer, parentVar, bpFieldSymbol, localName, explicitPropertyNameForValue, valueNode, context, getNodeValue);
 			return;
@@ -86,7 +83,7 @@ static class SetPropertyHelpers
 			return;
 
 		//POCO, set the property
-		if (!asCollectionItem && CanSet(parentVar, localName, valueNode, context, preferAddToCollection))
+		if (!asCollectionItem && CanSet(parentVar, localName, valueNode, context))
 		{
 			Set(writer, parentVar, localName, valueNode, context, getNodeValue);
 			return;
@@ -371,7 +368,7 @@ static class SetPropertyHelpers
 		return null;
 	}
 
-	static bool CanSet(ILocalValue parentVar, string localName, INode node, SourceGenContext context, bool preferAddToCollection)
+	static bool CanSet(ILocalValue parentVar, string localName, INode node, SourceGenContext context)
 	{
 		if (GetInstanceProperty(parentVar.Type, localName, context) is not IPropertySymbol property)
 			return false;
@@ -397,7 +394,7 @@ static class SetPropertyHelpers
 		if (HasDoubleImplicitConversion(localVar.Type, property.Type, context, out _))
 			return true;
 
-		if (!preferAddToCollection && HasExplicitConversion(localVar.Type, property.Type, context))
+		if (HasExplicitConversion(localVar, property.Type, context))
 		{
 			return true;
 		}
@@ -527,7 +524,7 @@ static class SetPropertyHelpers
 		}
 	}
 
-	static bool CanSetValue(IFieldSymbol? bpFieldSymbol, INode node, ITypeSymbol parentType, string localName, SourceGenContext context, NodeSGExtensions.GetNodeValueDelegate getNodeValue, bool preferAddToCollection, out string? explicitPropertyName)
+	static bool CanSetValue(IFieldSymbol? bpFieldSymbol, INode node, ITypeSymbol parentType, string localName, SourceGenContext context, NodeSGExtensions.GetNodeValueDelegate getNodeValue, out string? explicitPropertyName)
 	{
 		explicitPropertyName = null;
 
@@ -553,7 +550,8 @@ static class SetPropertyHelpers
 			if (HasDoubleImplicitConversion(localVar.Type, bpTypeAndConverter?.type, context, out _))
 				return true;
 
-			if (!preferAddToCollection && HasExplicitConversion(localVar.Type, bpTypeAndConverter?.type, context))
+			// A compatible single property-element child should be added, not cast to the collection property type.
+			if (HasExplicitConversion(localVar, bpTypeAndConverter?.type, context))
 			{
 				return true;
 			}
@@ -612,7 +610,7 @@ static class SetPropertyHelpers
 					{
 						cast = "(" + conv!.ReturnType.ToFQDisplayString() + ")";
 					}
-					else if (pType != null && !context.Compilation.HasImplicitConversion(localVar.Type, pType) && HasExplicitConversion(localVar.Type, pType, context))
+					else if (pType != null && HasExplicitConversion(localVar, pType, context))
 					{
 						// Only add cast if the source type is not object (object can be cast to anything at runtime)
 						if (!localVar.Type.Equals(context.Compilation.ObjectType, SymbolEqualityComparer.Default))
@@ -685,8 +683,9 @@ static class SetPropertyHelpers
 		return false;
 	}
 
-	static bool HasExplicitConversion(ITypeSymbol? fromType, ITypeSymbol? toType, SourceGenContext context)
+	static bool HasExplicitConversion(ILocalValue fromValue, ITypeSymbol? toType, SourceGenContext context)
 	{
+		var fromType = fromValue.Type;
 		if (fromType == null || toType == null)
 			return false;
 
@@ -710,6 +709,11 @@ static class SetPropertyHelpers
 				return true;
 			}
 		}
+
+		// A constructed object's runtime type is known; it cannot gain interfaces from a subtype.
+		// Do not mistake a lone collection child (such as a Layout) for the collection itself.
+		if (fromValue is LocalVariable { IsDirectlyConstructed: true })
+			return false;
 
 		// Check for valid reference type casts (inheritance or interface)
 		// Only allow if both are collections or both are non-collections
@@ -822,47 +826,6 @@ static class SetPropertyHelpers
 
 		return false;
 
-	}
-
-	static bool CanAddAsCollectionItem(ILocalValue parentVar, string localName, IFieldSymbol? bpFieldSymbol, bool attached, INode valueNode, SourceGenContext context, NodeSGExtensions.GetNodeValueDelegate getNodeValue)
-	{
-		if (valueNode is not ElementNode elementNode
-			|| !context.Variables.TryGetValue(elementNode, out var childVar)
-			|| childVar.Type.Equals(context.Compilation.ObjectType, SymbolEqualityComparer.Default)
-			|| !CanAdd(parentVar, localName, bpFieldSymbol, attached, valueNode, context, getNodeValue))
-		{
-			return false;
-		}
-
-		ITypeSymbol? propertyType = null;
-		if (localName != null
-			&& !CanGetValue(parentVar, bpFieldSymbol, attached, context, out propertyType)
-			&& !CanGet(parentVar, localName, context, out propertyType, out _))
-		{
-			return false;
-		}
-		else if (localName == null)
-		{
-			propertyType = parentVar.Type;
-		}
-
-		if (CanAddToResourceDictionary(parentVar, propertyType!, elementNode, context, getNodeValue))
-		{
-			return false;
-		}
-
-		ITypeSymbol itemType;
-		if (propertyType!.ImplementsGeneric(context.Compilation.GetTypeByMetadataName("System.Collections.Generic.IEnumerable`1")!, out var typeArguments))
-		{
-			itemType = typeArguments[0];
-		}
-		else
-		{
-			itemType = context.Compilation.ObjectType;
-		}
-
-		return context.Compilation.HasImplicitConversion(childVar.Type, itemType)
-			|| HasDoubleImplicitConversion(childVar.Type, itemType, context, out _);
 	}
 
 	static void Add(IndentedTextWriter writer, ILocalValue parentVar, XmlName propertyName, INode valueNode, SourceGenContext context, NodeSGExtensions.GetNodeValueDelegate getNodeValue)
@@ -1875,7 +1838,7 @@ static class SetPropertyHelpers
 			|| propertyType.Equals(context.Compilation.ObjectType, SymbolEqualityComparer.Default)
 			|| context.Compilation.HasImplicitConversion(localVar.Type, propertyType)
 			|| HasDoubleImplicitConversion(localVar.Type, propertyType, context, out _)
-			|| HasExplicitConversion(localVar.Type, propertyType, context)
+			|| HasExplicitConversion(localVar, propertyType, context)
 			//a value typed as object is cast at runtime, exactly like an ordinary property assignment
 			|| localVar.Type.Equals(context.Compilation.ObjectType, SymbolEqualityComparer.Default);
 	}
