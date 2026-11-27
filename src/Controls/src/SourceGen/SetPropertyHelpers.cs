@@ -714,10 +714,11 @@ static class SetPropertyHelpers
 			// Both must be collections, or both must be non-collections
 			if (fromIsCollection == toIsCollection)
 			{
-				// Same inheritance chain or one is an interface
+				// A class that does not implement the target interface may still compile with an explicit cast,
+				// but a single Layout child must be added to the collection rather than cast to IList<View>.
+				// Same inheritance chain, or the source is an interface
 				if (fromType.InheritsFrom(toType, context) ||
 					toType.InheritsFrom(fromType, context) ||
-					toType.TypeKind == TypeKind.Interface ||
 					fromType.TypeKind == TypeKind.Interface)
 				{
 					return true;
