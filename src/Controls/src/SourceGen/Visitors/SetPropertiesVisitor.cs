@@ -187,12 +187,14 @@ class SetPropertiesVisitor(SourceGenContext context, bool stopOnResourceDictiona
 
 		// Store original parentNode for lazy resource check
 		var originalParentNode = parentNode;
+		var singleChildPropertyElement = node.IsPropertyElementValue;
 
 		//Simplify ListNodes with single elements
 		//TODO: this should be done with a transform
 		if (parentNode is ListNode pList && pList.CollectionItems.Count == 1)
 		{
 			propertyName = pList.XmlName;
+			singleChildPropertyElement = propertyName != XmlName.Empty;
 			parentNode = parentNode.Parent;
 		}
 
@@ -350,7 +352,7 @@ class SetPropertiesVisitor(SourceGenContext context, bool stopOnResourceDictiona
 				throw new System.InvalidOperationException($"SetPropertiesVisitor.Visit(ElementNode) propertyName != Empty: Parent '{((ElementNode)parentNode).XmlType.Name}' x:Key='{key1}' not in Variables");
 			}
 
-			SetPropertyHelpers.SetPropertyValue(Writer, pVar1, propertyName, node, Context);
+			SetPropertyHelpers.SetPropertyValue(Writer, pVar1, propertyName, node, Context, singleChildPropertyElement: singleChildPropertyElement);
 		}
 		else if (parentNode.IsCollectionItem(node) && parentNode is ElementNode)
 		{
